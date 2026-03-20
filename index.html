@@ -55,11 +55,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
 
         body { 
             font-family: 'Inter', sans-serif; 
-            background-color: #f5f5f4; /* stone-100 */
+            background-color: #f5f5f4; 
             -webkit-tap-highlight-color: transparent;
         }
         
@@ -70,14 +70,14 @@
         
         @media print {
             @page { margin: 0.5cm; size: A4; }
-            body { background-color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { background-color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .no-print { display: none !important; }
             .print-only { display: block !important; }
             .page-break { break-after: page; page-break-after: always; }
             .avoid-break { break-inside: avoid; page-break-inside: avoid; }
             .print-shadow-none { box-shadow: none !important; border-color: #e5e7eb !important; }
             #sidebar-root { display: none !important; }
-            #main-content { margin-left: 0 !important; width: 100% !important; overflow: visible !important; height: auto !important; }
+            #main-content { margin-left: 0 !important; width: 100% !important; overflow: visible !important; height: auto !important; background-color: white !important; padding: 0 !important; }
         }
         
         /* Tabs transition */
@@ -98,7 +98,7 @@
             Users, TrendingUp, DollarSign, Archive, Image as ImageIcon, 
             Coins, Search, Link as LinkIcon, Unlink, Database, 
             Activity, ClipboardList, ChefHat, Info, ArrowRight, 
-            CheckCircle, LayoutDashboard, Book, ListChecks, Shapes, FileOutput, Menu, LogOut, Loader2, FileSpreadsheet
+            CheckCircle, LayoutDashboard, Book, ListChecks, Shapes, FileOutput, Menu, LogOut, Loader2, FileSpreadsheet, Upload
         } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
@@ -145,6 +145,33 @@
         const isPackaging = (name) => {
             const n = (name || '').toLowerCase();
             return n.includes('embalagem') || n.includes('etiqueta') || n.includes('bobina') || n.includes('saco') || n.includes('fita') || n.includes('caixa') || n.includes('papel');
+        };
+
+        // --- Compressor de Imagens Otimizado ---
+        const compressImage = (file, maxWidth = 800) => {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = event => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        if (width > maxWidth) {
+                            height *= maxWidth / width;
+                            width = maxWidth;
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.7)); // Comprime para JPEG 70%
+                    };
+                };
+                reader.onerror = error => reject(error);
+            });
         };
 
         // --- Componentes UI Base Independentes ---
@@ -284,6 +311,7 @@
         const INITIAL_PRODUCT = {
             id: null,
             name: '',
+            image: null,
             description: '',
             line: 'Geral', 
             outputType: 'kg', 
@@ -345,6 +373,8 @@
                     try {
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth); // Fallback para manter a aplicação a funcionar no canvas
                         }
                     } catch (error) {
                         console.error("Auth error:", error);
@@ -404,7 +434,16 @@
                 const unsubSettings = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'config', 'settings'),
                     (docSnap) => {
                         if (docSnap.exists() && !docSnap.metadata.hasPendingWrites) {
-                            setSettings({ ...defaultSettingsObj, ...docSnap.data() });
+                            const data = docSnap.data();
+                            setSettings({
+                                ...defaultSettingsObj,
+                                ...data,
+                                lines: data.lines || defaultSettingsObj.lines,
+                                stages: data.stages || defaultSettingsObj.stages,
+                                machines: data.machines || defaultSettingsObj.machines,
+                                employees: data.employees || defaultSettingsObj.employees,
+                                defaultIndirectCosts: data.defaultIndirectCosts || defaultSettingsObj.defaultIndirectCosts
+                            });
                         }
                     },
                     (error) => console.error(error)
@@ -574,8 +613,8 @@
                         <div className="w-20 h-20 bg-brand-orange rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-lg shadow-orange-500/30">
                             <ChefHat size={40} className="text-white" strokeWidth={2.5}/>
                         </div>
-                        <h1 className="text-3xl font-black text-stone-900 tracking-tight mb-2">Gestão de Custos</h1>
-                        <p className="text-stone-500 font-medium mb-10 text-sm px-4">Faça login com a sua conta Google para aceder às Fichas Técnicas e sincronizar o seu progresso na nuvem.</p>
+                        <h1 className="text-3xl font-black text-stone-900 tracking-tight mb-2">Fichas Técnicas/Custos</h1>
+                        <p className="text-stone-500 font-medium mb-10 text-sm px-4">Faça login com a sua conta Google para aceder ao sistema e sincronizar o seu progresso na nuvem.</p>
 
                         <button onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-4 bg-white border-2 border-stone-200 hover:bg-stone-50 hover:border-stone-300 text-stone-800 font-bold py-4 px-6 rounded-2xl transition-all shadow-sm active:scale-95">
                             <svg className="w-6 h-6" viewBox="0 0 24 24">
@@ -586,13 +625,16 @@
                             </svg>
                             Entrar com o Google
                         </button>
+                        <button onClick={() => signInAnonymously(auth)} className="w-full mt-4 text-sm font-bold text-stone-500 hover:text-stone-800 transition-colors">
+                            Entrar como Convidado (Local)
+                        </button>
                         <p className="mt-8 text-[10px] text-stone-400 font-bold uppercase tracking-widest">Acesso Seguro • Cloud Firestore</p>
                     </div>
                 </div>
             );
 
             const renderDashboard = () => (
-                <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
+                <div className="max-w-6xl mx-auto space-y-6 animate-fade-in pb-20">
                     <NavHeader title="Visão Geral do Sistema" />
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <Card className="p-6 border-l-4 border-brand-orange hover:shadow-md transition-all cursor-pointer hover:-translate-y-1" onClick={() => setView('catalog_list')}>
@@ -618,7 +660,7 @@
             );
 
             const renderCatalogList = () => (
-                <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+                <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-20">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-stone-200 pb-4">
                         <h2 className="text-2xl font-bold text-stone-900 leading-tight">Catálogo de Fichas Técnicas</h2>
                         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -636,7 +678,10 @@
                             const t = calculateProductData(p);
                             return (
                                 <Card key={p.id} onClick={() => { setEditingProduct(p); setView('catalog_editor'); setEditorTab('receita'); }} className="p-5 cursor-pointer hover:border-brand-orange transition-all hover:shadow-md border-l-4 border-l-brand-orange group">
-                                    <div className="flex justify-between items-start mb-3"><span className="text-[10px] bg-orange-100 text-brand-orange px-2 py-0.5 rounded font-bold uppercase tracking-wider">{p.line}</span></div>
+                                    <div className="flex justify-between items-start mb-3">
+                                        <span className="text-[10px] bg-orange-100 text-brand-orange px-2 py-0.5 rounded font-bold uppercase tracking-wider">{p.line}</span>
+                                        {p.image && <div className="w-8 h-8 rounded-md overflow-hidden bg-stone-100"><img src={p.image} className="w-full h-full object-cover"/></div>}
+                                    </div>
                                     <h3 className="font-bold text-stone-800 mb-1 truncate text-lg group-hover:text-brand-orange transition-colors">{p.name}</h3>
                                     <div className="text-xs font-medium text-stone-500 mb-4">{t.finalYieldKg.toFixed(2)} Kg / Lote</div>
                                     <div className="border-t border-stone-100 pt-3 flex justify-between items-end">
@@ -647,6 +692,73 @@
                             )
                         })}
                         {catalog.length === 0 && <div className="col-span-full text-center py-16 text-stone-400 border-2 border-dashed border-stone-200 rounded-2xl bg-stone-50"><Book size={48} className="mx-auto mb-4 text-stone-300"/>Nenhum produto cadastrado no catálogo.<br/>Clique em "Novo Produto" para começar a sua primeira Ficha Técnica.</div>}
+                    </div>
+                </div>
+            );
+
+            const PrintTechSheet = ({ product: p, calc: t, settings }) => (
+                <div className="hidden print:block w-full bg-white text-black p-4 font-sans max-w-4xl mx-auto">
+                    <div className="flex justify-between items-start border-b-4 border-stone-900 pb-6 mb-8">
+                        <div>
+                            {settings.logo ? <img src={settings.logo} className="h-20 w-auto object-contain" /> : <div className="text-2xl font-black tracking-widest text-stone-300">EMPRESA</div>}
+                        </div>
+                        <div className="text-right">
+                            <h1 className="text-3xl font-black uppercase tracking-widest text-stone-900">Ficha Técnica e de Custos</h1>
+                            <p className="text-stone-500 font-bold mt-1 tracking-widest">REF: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVA'}</p>
+                            <p className="text-stone-500 text-xs mt-1">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-8 mb-8">
+                        <div className="flex-1 grid grid-cols-2 gap-4 bg-stone-50 p-6 rounded-2xl border border-stone-200">
+                            <div className="col-span-2"><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Produto</p><p className="font-black text-2xl text-stone-900">{p.name}</p></div>
+                            <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Categoria / Linha</p><p className="font-bold text-lg text-stone-800">{p.line}</p></div>
+                            <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Rendimento do Lote</p><p className="font-black text-brand-orange text-xl">{t.finalYieldKg.toFixed(3)} kg</p></div>
+                            <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Formato de Venda</p><p className="font-bold text-lg text-stone-800">{p.outputType === 'unit' ? `Unidade (${p.outputUnitWeight}${p.outputUnitMeasure})` : 'Quilo (kg)'}</p></div>
+                        </div>
+                        {p.image ? (
+                            <img src={p.image} className="w-48 h-48 object-cover rounded-2xl border border-stone-200 shadow-sm" />
+                        ) : (
+                            <div className="w-48 h-48 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-200 flex items-center justify-center text-stone-300 flex-col"><ImageIcon size={40} className="mb-2"/><span className="text-[10px] font-bold uppercase tracking-widest">Sem Imagem</span></div>
+                        )}
+                    </div>
+
+                    <h3 className="font-black text-lg mb-3 uppercase tracking-widest border-b-2 border-stone-200 pb-2 text-stone-800">Composição (Matéria-Prima)</h3>
+                    <table className="w-full text-sm text-left mb-10 border border-stone-200 rounded-lg overflow-hidden">
+                        <thead className="bg-stone-100 font-bold uppercase text-[10px] text-stone-500 tracking-widest">
+                            <tr><th className="p-3 border-b border-stone-200">Etapa de Processo</th><th className="p-3 border-b border-stone-200">Descrição do Insumo</th><th className="p-3 border-b border-stone-200 text-center">Quant.</th><th className="p-3 border-b border-stone-200 text-right">Custo Base</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-100">
+                            {p.ingredients.map((ing, i) => (
+                                <tr key={i} className="even:bg-stone-50">
+                                    <td className="p-3 font-bold text-stone-500 text-xs uppercase tracking-wider">{ing.section}</td>
+                                    <td className="p-3 font-bold text-stone-900">{ing.name} {ing.fixedQty > 0 ? <span className="text-[9px] text-stone-400 font-normal uppercase ml-1">(Fixo)</span> : ''}</td>
+                                    <td className="p-3 text-center font-black text-brand-orange">{(safeVal(ing.qty) + safeVal(ing.fixedQty)).toFixed(3)} {ing.unit}</td>
+                                    <td className="p-3 text-right font-bold text-stone-800">R$ {formatMoney((toKg(safeVal(ing.qty)+safeVal(ing.fixedQty), ing.unit) * safeVal(ing.cost)))}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    <div className="grid grid-cols-2 gap-10 border-t-2 border-stone-200 pt-8">
+                        <div>
+                            <h3 className="font-black text-lg mb-4 uppercase tracking-widest text-stone-800">Estrutura de Custos</h3>
+                            <div className="space-y-3 text-sm">
+                                <div className="flex justify-between border-b border-stone-100 pb-2"><span className="font-bold text-stone-500">Matéria Prima</span><span className="font-black text-stone-800">R$ {formatMoney(t.directCost)}</span></div>
+                                <div className="flex justify-between border-b border-stone-100 pb-2"><span className="font-bold text-stone-500">Mão de Obra</span><span className="font-black text-stone-800">R$ {formatMoney(t.laborCost)}</span></div>
+                                <div className="flex justify-between border-b border-stone-100 pb-2"><span className="font-bold text-stone-500">Energia / Equipamentos</span><span className="font-black text-stone-800">R$ {formatMoney(t.machineryCost)}</span></div>
+                                <div className="flex justify-between border-b border-stone-100 pb-2"><span className="font-bold text-stone-500">Indiretos / Taxas</span><span className="font-black text-stone-800">R$ {formatMoney(t.indirectCost)}</span></div>
+                                <div className="flex justify-between pt-3"><span className="font-black uppercase tracking-widest text-stone-800 text-lg">Custo Total Lote</span><span className="font-black text-2xl text-red-600">R$ {formatMoney(t.totalCost)}</span></div>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 className="font-black text-lg mb-4 uppercase tracking-widest text-stone-800">Precificação Estratégica</h3>
+                            <div className="bg-stone-900 text-white p-6 rounded-2xl">
+                                <div className="flex justify-between items-center mb-4"><span className="text-xs font-bold uppercase tracking-widest text-stone-400">Markup Alvo</span><span className="font-black text-xl">{p.targetMargin}%</span></div>
+                                <div className="flex justify-between items-center mb-5"><span className="text-xs font-bold uppercase tracking-widest text-stone-400">Custo Base ({p.outputType==='unit'?'Un':'Kg'})</span><span className="font-black text-2xl text-stone-200">R$ {formatMoney(t.baseCostForPricing)}</span></div>
+                                <div className="flex justify-between items-center border-t border-stone-700 pt-5"><span className="text-sm font-black uppercase tracking-widest text-emerald-400">Preço Sugerido</span><span className="font-black text-4xl text-emerald-400">R$ {formatMoney(t.suggestedPrice)}</span></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             );
@@ -680,6 +792,17 @@
                 const handleUnlink = (idx) => updateIng(idx, 'ingredientId', null);
                 const getIngCostDisplay = (ing) => { if (ing.ingredientId) { const inv = ingredients.find(i => i.id === ing.ingredientId); if (inv) return inv.price; } return ing.cost; };
 
+                const handleProductImageUpload = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    try {
+                        const base64Img = await compressImage(file, 600);
+                        updateField('image', base64Img);
+                    } catch (err) {
+                        notify("Erro ao carregar a imagem.");
+                    }
+                };
+
                 const handleSave = async () => {
                     if (!p.name) return notify("Nome do produto é obrigatório.");
                     if (!p.id) p.id = generateId();
@@ -694,304 +817,302 @@
 
                 return (
                     <div className="max-w-6xl mx-auto animate-slide-in pb-32">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 no-print border-b border-stone-200 pb-4">
-                            <div className="flex items-center gap-4">
-                                <button onClick={() => setView('catalog_list')} className="p-2 bg-white border border-stone-200 hover:bg-stone-50 rounded-xl transition-colors shadow-sm"><ChevronLeft size={20} className="text-stone-600" /></button>
-                                <div>
-                                    <h2 className="text-2xl font-bold text-stone-900 leading-none">Editor de Ficha</h2>
-                                    <p className="text-xs text-stone-500 font-medium uppercase tracking-widest mt-1">Ref: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVO'}</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-2 w-full md:w-auto overflow-x-auto">
-                                <Button variant="outline" onClick={() => window.print()} className="bg-white whitespace-nowrap"><Printer size={16}/> Imprimir Ficha</Button>
-                                <Button variant="brand" onClick={handleSave} className="whitespace-nowrap w-full md:w-auto"><Save size={16}/> Guardar e Voltar</Button>
-                            </div>
-                        </div>
+                        <PrintTechSheet product={p} calc={t} settings={settings} />
 
-                        {/* Cabeçalho do Produto */}
-                        <div className="bg-white rounded-xl shadow-sm border border-stone-200 p-6 mb-6">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                                <div className="md:col-span-2"><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Nome do Produto</label><input type="text" value={p.name} onChange={e => updateField('name', e.target.value)} className="w-full p-3 border border-stone-300 rounded-xl outline-none font-bold text-stone-800 focus:border-brand-orange focus:ring-1 focus:ring-orange-500 transition-all" placeholder="Ex: Pão Francês Tradicional" /></div>
-                                <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Linha / Categoria</label><SearchableSelect options={settings.lines} value={p.line} onChange={(val) => updateField('line', val)} /></div>
-                                <div>
-                                    <label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Formato de Venda</label>
-                                    <select value={p.outputType} onChange={e => updateField('outputType', e.target.value)} className="w-full p-3 border border-stone-300 rounded-xl outline-none focus:border-brand-orange bg-white text-sm font-medium">
-                                        <option value="kg">Por Kg (Granel)</option>
-                                        <option value="unit">Por Unidade / Pacote</option>
-                                    </select>
+                        <div className="print:hidden">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-stone-200 pb-4">
+                                <div className="flex items-center gap-4">
+                                    <button onClick={() => setView('catalog_list')} className="p-2 bg-white border border-stone-200 hover:bg-stone-50 rounded-xl transition-colors shadow-sm"><ChevronLeft size={20} className="text-stone-600" /></button>
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-stone-900 leading-none">Editor de Ficha</h2>
+                                        <p className="text-xs text-stone-500 font-medium uppercase tracking-widest mt-1">Ref: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVO'}</p>
+                                    </div>
                                 </div>
-                                {p.outputType === 'unit' && (
-                                    <div className="md:col-span-4 bg-orange-50/50 p-5 rounded-xl border border-orange-100 flex items-center gap-4 animate-fade-in">
-                                        <div className="p-2 bg-white rounded-lg shadow-sm border border-orange-100"><Info className="text-brand-orange" size={24}/></div>
-                                        <div className="flex-1">
-                                            <label className="block text-xs font-bold text-orange-800 uppercase mb-2">Qual o peso exato de 1 Unidade para venda?</label>
-                                            <div className="flex items-center gap-3">
-                                                <input type="number" step="0.001" value={p.outputUnitWeight} onChange={e => updateField('outputUnitWeight', e.target.value)} className="w-32 p-3 border border-orange-200 rounded-xl font-bold text-stone-800 outline-none focus:border-brand-orange" placeholder="Ex: 50" />
-                                                <select value={p.outputUnitMeasure} onChange={e => updateField('outputUnitMeasure', e.target.value)} className="p-3 border border-orange-200 rounded-xl bg-white text-sm font-medium outline-none focus:border-brand-orange"><option value="g">gramas (g)</option><option value="kg">quilos (kg)</option></select>
+                                <div className="flex gap-2 w-full md:w-auto overflow-x-auto">
+                                    <Button variant="outline" onClick={() => window.print()} className="bg-white whitespace-nowrap"><Printer size={16}/> Imprimir Ficha</Button>
+                                    <Button variant="brand" onClick={handleSave} className="whitespace-nowrap w-full md:w-auto"><Save size={16}/> Guardar e Voltar</Button>
+                                </div>
+                            </div>
+
+                            {/* Cabeçalho do Produto com Imagem */}
+                            <div className="bg-white rounded-xl shadow-sm border border-stone-200 p-6 mb-6 flex flex-col md:flex-row gap-6">
+                                <div className="flex-shrink-0 w-full md:w-48 h-48 bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 flex items-center justify-center overflow-hidden relative group cursor-pointer transition-colors hover:border-brand-orange hover:bg-orange-50">
+                                    <input type="file" accept="image/*" onChange={handleProductImageUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10"/>
+                                    {p.image ? (
+                                        <>
+                                            <img src={p.image} className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                <button onClick={(e) => { e.preventDefault(); updateField('image', null); }} className="text-white bg-red-500 p-2 rounded-full relative z-20 hover:bg-red-600 transition-colors shadow-lg"><Trash2 size={16}/></button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex flex-col items-center text-stone-400 group-hover:text-brand-orange transition-colors"><ImageIcon size={32} className="mb-2"/><span className="text-xs font-bold uppercase tracking-widest text-center px-4">Adicionar Foto</span></div>
+                                    )}
+                                </div>
+
+                                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 content-start">
+                                    <div className="md:col-span-2"><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Nome do Produto</label><input type="text" value={p.name} onChange={e => updateField('name', e.target.value)} className="w-full p-3 border border-stone-300 rounded-xl outline-none font-bold text-stone-800 focus:border-brand-orange focus:ring-1 focus:ring-orange-500 transition-all text-lg" placeholder="Ex: Pão Francês Tradicional" /></div>
+                                    <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Linha / Categoria</label><SearchableSelect options={settings.lines} value={p.line} onChange={(val) => updateField('line', val)} /></div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Formato de Venda</label>
+                                        <select value={p.outputType} onChange={e => updateField('outputType', e.target.value)} className="w-full p-3 border border-stone-300 rounded-xl outline-none focus:border-brand-orange bg-white text-sm font-bold text-stone-800 transition-all">
+                                            <option value="kg">Por Kg (Granel)</option>
+                                            <option value="unit">Por Unidade / Pacote</option>
+                                        </select>
+                                    </div>
+                                    {p.outputType === 'unit' && (
+                                        <div className="md:col-span-2 bg-orange-50/50 p-4 rounded-xl border border-orange-100 flex items-center gap-4 animate-fade-in mt-2">
+                                            <div className="p-2 bg-white rounded-lg shadow-sm border border-orange-100"><Info className="text-brand-orange" size={20}/></div>
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-bold text-orange-800 uppercase mb-2">Peso exato de 1 Unidade para venda</label>
+                                                <div className="flex items-center gap-3">
+                                                    <input type="number" step="0.001" value={p.outputUnitWeight} onChange={e => updateField('outputUnitWeight', e.target.value)} className="w-32 p-3 border border-orange-200 rounded-xl font-bold text-stone-800 outline-none focus:border-brand-orange" placeholder="Ex: 50" />
+                                                    <select value={p.outputUnitMeasure} onChange={e => updateField('outputUnitMeasure', e.target.value)} className="p-3 border border-orange-200 rounded-xl bg-white text-sm font-medium outline-none focus:border-brand-orange"><option value="g">gramas (g)</option><option value="kg">quilos (kg)</option></select>
+                                                </div>
                                             </div>
                                         </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Abas Navegação */}
+                            <div className="flex overflow-x-auto border-b border-stone-200 mb-6 gap-2 no-print pb-px">
+                                <button onClick={()=>setEditorTab('receita')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='receita' ? 'border-brand-orange text-brand-orange bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><ListChecks size={18}/> Ficha Técnica (Receita)</button>
+                                <button onClick={()=>setEditorTab('custos')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='custos' ? 'border-stone-800 text-stone-800 bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><Shapes size={18}/> Operação & Indiretos</button>
+                                <button onClick={()=>setEditorTab('precificacao')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='precificacao' ? 'border-emerald-600 text-emerald-600 bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><TrendingUp size={18}/> Precificação Final</button>
+                            </div>
+
+                            {/* ABA 1: RECEITA */}
+                            <div className={`space-y-6 ${editorTab==='receita' ? 'block animate-fadeIn' : 'hidden'}`}>
+                                {activeSections.length === 0 && (
+                                    <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-stone-200">
+                                        <div className="mx-auto w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4"><ChefHat className="text-stone-400 w-8 h-8"/></div>
+                                        <h3 className="text-lg font-bold text-stone-700">Comece a sua Receita</h3>
+                                        <p className="text-sm text-stone-500 mb-6 max-w-sm mx-auto">Adicione os ingredientes, organize por etapas do processo (Ex: Massa, Recheio) e estabeleça os padrões de perda.</p>
+                                        <Button onClick={() => addIng(settings.stages[0])} variant="brand" className="mx-auto px-6 py-3"><Plus size={18}/> Adicionar Primeiro Ingrediente</Button>
                                     </div>
                                 )}
-                            </div>
-                        </div>
 
-                        {/* Abas Navegação */}
-                        <div className="flex overflow-x-auto border-b border-stone-200 mb-6 gap-2 no-print pb-px">
-                            <button onClick={()=>setEditorTab('receita')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='receita' ? 'border-brand-orange text-brand-orange bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><ListChecks size={18}/> Ficha Técnica (Receita)</button>
-                            <button onClick={()=>setEditorTab('custos')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='custos' ? 'border-stone-800 text-stone-800 bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><Shapes size={18}/> Operação & Indiretos</button>
-                            <button onClick={()=>setEditorTab('precificacao')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='precificacao' ? 'border-emerald-600 text-emerald-600 bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><TrendingUp size={18}/> Precificação Final</button>
-                        </div>
-
-                        {/* ABA 1: RECEITA */}
-                        <div className={`space-y-6 ${editorTab==='receita' ? 'block animate-fadeIn' : 'hidden print:block'}`}>
-                            {activeSections.length === 0 && (
-                                <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-stone-200">
-                                    <div className="mx-auto w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4"><ChefHat className="text-stone-400 w-8 h-8"/></div>
-                                    <h3 className="text-lg font-bold text-stone-700">Comece a sua Receita</h3>
-                                    <p className="text-sm text-stone-500 mb-6 max-w-sm mx-auto">Adicione os ingredientes, organize por etapas do processo (Ex: Massa, Recheio) e estabeleça os padrões de perda.</p>
-                                    <Button onClick={() => addIng(settings.stages[0])} variant="brand" className="mx-auto px-6 py-3"><Plus size={18}/> Adicionar Primeiro Ingrediente</Button>
-                                </div>
-                            )}
-
-                            {activeSections.map((secName) => {
-                                const secIngs = p.ingredients.map((ing, i) => ({...ing, originalIdx: i})).filter(ing => (ing.section || settings.stages[0]) === secName);
-                                const secLoss = p.sections?.[secName]?.processLossPct || 0;
-                                
-                                return (
-                                    <div key={secName} className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm avoid-break">
-                                        <div className="bg-stone-50/80 p-5 border-b border-stone-200 flex flex-col md:flex-row justify-between items-center gap-4">
-                                            <h3 className="font-bold text-stone-800 flex items-center gap-3 text-lg"><div className="w-1.5 h-6 bg-brand-orange rounded-full"></div> {secName}</h3>
-                                            <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-stone-200 shadow-sm">
-                                                <span className="text-xs font-bold uppercase text-stone-500 tracking-wider">Perda (Evaporação/Quebra)</span>
-                                                <div className="flex items-center gap-1">
-                                                    <input type="number" className="w-16 text-right font-black text-red-500 outline-none bg-red-50 p-1 rounded" value={secLoss} onChange={e => updateSection(secName, 'processLossPct', Number(e.target.value))} />
-                                                    <span className="text-sm font-bold text-red-500">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="p-5 space-y-3">
-                                            <div className="hidden md:flex gap-3 px-3 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-100 pb-2">
-                                                <div className="flex-1">Ingrediente Base</div><div className="w-24 text-center">Quant.</div><div className="w-16 text-center">Medida</div><div className="w-24 text-center" title="Qtd Fixa Setup">Fixo/Setup*</div><div className="w-32 text-right">Custo Unitário</div><div className="w-10"></div>
-                                            </div>
-                                            {secIngs.map((ing) => {
-                                                const idx = ing.originalIdx;
-                                                const isLinked = !!ing.ingredientId;
-                                                return (
-                                                    <div key={idx} className={`flex flex-wrap md:flex-nowrap gap-3 items-center p-2.5 rounded-xl border transition-all ${isLinked ? 'bg-orange-50/30 border-orange-200 shadow-sm' : 'bg-white hover:bg-stone-50 border-stone-100'}`}>
-                                                        <div className="flex-1 flex items-center gap-2 w-full md:w-auto">
-                                                            <button onClick={() => { if(isLinked) handleUnlink(idx); else { setEditorActiveLinkIdx(idx); setEditorIngModalOpen(true); } }} className={`p-2 rounded-lg transition-colors ${isLinked ? 'text-brand-orange bg-orange-100' : 'text-stone-400 bg-stone-100 hover:bg-stone-200'}`} title={isLinked ? "Desvincular" : "Vincular ao Estoque Central"}>
-                                                                {isLinked ? <LinkIcon size={16}/> : <Unlink size={16}/>}
-                                                            </button>
-                                                            <input placeholder="Nome do Ingrediente..." value={ing.name} onChange={e => updateIng(idx, 'name', e.target.value)} className="w-full bg-transparent border-none outline-none font-medium text-sm text-stone-800 placeholder:text-stone-300" readOnly={isLinked} />
-                                                        </div>
-                                                        <div className="w-1/3 md:w-24"><input type="number" step="any" placeholder="Qtd" value={ing.qty} onChange={e => updateIng(idx, 'qty', e.target.value)} className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-lg text-sm text-center font-bold text-stone-800 outline-none focus:border-brand-orange" /></div>
-                                                        <div className="w-1/3 md:w-16"><select value={ing.unit} onChange={e => updateIng(idx, 'unit', e.target.value)} className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-lg text-sm text-center font-medium outline-none" disabled={isLinked}><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">L</option><option value="un">un</option></select></div>
-                                                        <div className="w-1/3 md:w-24"><input type="number" step="any" placeholder="Fixo" value={ing.fixedQty||''} onChange={e => updateIng(idx, 'fixedQty', e.target.value)} className="w-full p-2.5 bg-blue-50/50 border border-blue-200 rounded-lg text-sm text-center text-blue-700 font-medium outline-none" title="Quantidade que não se multiplica ao fazer mais lotes" /></div>
-                                                        <div className="w-full md:w-32 relative flex items-center">
-                                                            <span className="absolute left-3 text-xs font-bold text-stone-400">R$</span>
-                                                            <input type="number" step="any" className={`w-full p-2.5 pl-8 border rounded-lg text-sm text-right font-black outline-none ${isLinked ? 'bg-orange-100/50 text-stone-600 border-orange-200' : 'bg-white border-stone-200 focus:border-brand-orange'}`} value={getIngCostDisplay(ing)} onChange={e => updateIng(idx, 'cost', e.target.value)} readOnly={isLinked} />
-                                                        </div>
-                                                        <button onClick={() => removeIng(idx)} className="text-stone-300 hover:text-red-500 p-2.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                {activeSections.map((secName) => {
+                                    const secIngs = p.ingredients.map((ing, i) => ({...ing, originalIdx: i})).filter(ing => (ing.section || settings.stages[0]) === secName);
+                                    const secLoss = p.sections?.[secName]?.processLossPct || 0;
+                                    
+                                    return (
+                                        <div key={secName} className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm avoid-break">
+                                            <div className="bg-stone-50/80 p-5 border-b border-stone-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                                                <h3 className="font-bold text-stone-800 flex items-center gap-3 text-lg"><div className="w-1.5 h-6 bg-brand-orange rounded-full"></div> {secName}</h3>
+                                                <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-stone-200 shadow-sm">
+                                                    <span className="text-xs font-bold uppercase text-stone-500 tracking-wider">Perda (Evaporação/Quebra)</span>
+                                                    <div className="flex items-center gap-1">
+                                                        <input type="number" className="w-16 text-right font-black text-red-500 outline-none bg-red-50 p-1 rounded" value={secLoss} onChange={e => updateSection(secName, 'processLossPct', Number(e.target.value))} />
+                                                        <span className="text-sm font-bold text-red-500">%</span>
                                                     </div>
-                                                )
-                                            })}
-                                            <Button variant="outline" onClick={() => addIng(secName)} className="mt-4 text-stone-600 w-full border-dashed border-2 py-3"><Plus size={16}/> Adicionar Ingrediente em {secName}</Button>
+                                                </div>
+                                            </div>
+                                            <div className="p-5 space-y-3">
+                                                <div className="hidden md:flex gap-3 px-3 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-100 pb-2">
+                                                    <div className="flex-1">Ingrediente Base</div><div className="w-24 text-center">Quant.</div><div className="w-16 text-center">Medida</div><div className="w-24 text-center" title="Qtd Fixa Setup">Fixo/Setup*</div><div className="w-32 text-right">Custo Unitário</div><div className="w-10"></div>
+                                                </div>
+                                                {secIngs.map((ing) => {
+                                                    const idx = ing.originalIdx;
+                                                    const isLinked = !!ing.ingredientId;
+                                                    return (
+                                                        <div key={idx} className={`flex flex-wrap md:flex-nowrap gap-3 items-center p-2.5 rounded-xl border transition-all ${isLinked ? 'bg-orange-50/30 border-orange-200 shadow-sm' : 'bg-white hover:bg-stone-50 border-stone-100'}`}>
+                                                            <div className="flex-1 flex items-center gap-2 w-full md:w-auto">
+                                                                <button onClick={() => { if(isLinked) handleUnlink(idx); else { setEditorActiveLinkIdx(idx); setEditorIngModalOpen(true); } }} className={`p-2 rounded-lg transition-colors ${isLinked ? 'text-brand-orange bg-orange-100' : 'text-stone-400 bg-stone-100 hover:bg-stone-200'}`} title={isLinked ? "Desvincular" : "Vincular ao Estoque Central"}>
+                                                                    {isLinked ? <LinkIcon size={16}/> : <Unlink size={16}/>}
+                                                                </button>
+                                                                <input placeholder="Nome do Ingrediente..." value={ing.name} onChange={e => updateIng(idx, 'name', e.target.value)} className="w-full bg-transparent border-none outline-none font-medium text-sm text-stone-800 placeholder:text-stone-300" readOnly={isLinked} />
+                                                            </div>
+                                                            <div className="w-1/3 md:w-24"><input type="number" step="any" placeholder="Qtd" value={ing.qty} onChange={e => updateIng(idx, 'qty', e.target.value)} className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-lg text-sm text-center font-bold text-stone-800 outline-none focus:border-brand-orange" /></div>
+                                                            <div className="w-1/3 md:w-16"><select value={ing.unit} onChange={e => updateIng(idx, 'unit', e.target.value)} className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-lg text-sm text-center font-medium outline-none" disabled={isLinked}><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">L</option><option value="un">un</option></select></div>
+                                                            <div className="w-1/3 md:w-24"><input type="number" step="any" placeholder="Fixo" value={ing.fixedQty||''} onChange={e => updateIng(idx, 'fixedQty', e.target.value)} className="w-full p-2.5 bg-blue-50/50 border border-blue-200 rounded-lg text-sm text-center text-blue-700 font-medium outline-none" title="Quantidade que não se multiplica ao fazer mais lotes" /></div>
+                                                            <div className="w-full md:w-32 relative flex items-center">
+                                                                <span className="absolute left-3 text-xs font-bold text-stone-400">R$</span>
+                                                                <input type="number" step="any" className={`w-full p-2.5 pl-8 border rounded-lg text-sm text-right font-black outline-none ${isLinked ? 'bg-orange-100/50 text-stone-600 border-orange-200' : 'bg-white border-stone-200 focus:border-brand-orange'}`} value={getIngCostDisplay(ing)} onChange={e => updateIng(idx, 'cost', e.target.value)} readOnly={isLinked} />
+                                                            </div>
+                                                            <button onClick={() => removeIng(idx)} className="text-stone-300 hover:text-red-500 p-2.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                                        </div>
+                                                    )
+                                                })}
+                                                <Button variant="outline" onClick={() => addIng(secName)} className="mt-4 text-stone-600 w-full border-dashed border-2 py-3"><Plus size={16}/> Adicionar Ingrediente em {secName}</Button>
+                                            </div>
                                         </div>
-                                    </div>
-                                )
-                            })}
+                                    )
+                                })}
 
-                            <div className="bg-stone-50 p-6 border-2 border-dashed border-stone-200 rounded-2xl text-center no-print">
-                                <span className="block text-sm text-stone-600 font-bold mb-4 uppercase tracking-wider">Criar Nova Etapa de Produção:</span>
-                                <div className="inline-flex flex-wrap gap-2 justify-center">
-                                    {settings.stages.map(s => <button key={s} onClick={() => addIng(s)} className="px-4 py-2 bg-white border shadow-sm rounded-xl text-xs font-bold text-stone-700 hover:border-brand-orange hover:text-brand-orange transition-all">+ {s}</button>)}
+                                <div className="bg-stone-50 p-6 border-2 border-dashed border-stone-200 rounded-2xl text-center no-print">
+                                    <span className="block text-sm text-stone-600 font-bold mb-4 uppercase tracking-wider">Criar Nova Etapa de Produção:</span>
+                                    <div className="inline-flex flex-wrap gap-2 justify-center">
+                                        {settings.stages.map(s => <button key={s} onClick={() => addIng(s)} className="px-4 py-2 bg-white border shadow-sm rounded-xl text-xs font-bold text-stone-700 hover:border-brand-orange hover:text-brand-orange transition-all">+ {s}</button>)}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* ABA 2: CUSTOS ADICIONAIS */}
-                        <div className={`space-y-6 ${editorTab==='custos' ? 'block animate-fadeIn' : 'hidden print:block print:mt-8'}`}>
-                            {/* Mão de Obra */}
-                            <Card className="overflow-hidden border-0 shadow-md">
-                                <div className="px-6 py-4 bg-stone-800 text-white flex items-center gap-3"><Clock size={20}/><h3 className="font-bold text-lg">Mão de Obra Operacional</h3></div>
-                                <div className="p-6 space-y-3 bg-stone-50/30">
-                                    {p.laborItems?.map(l => {
-                                        const emp = settings.employees.find(e => e.id == l.employeeId);
-                                        return (
-                                            <div key={l.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
-                                                <div className="flex-1 font-bold text-sm text-stone-800 pl-2">{emp?.name || 'Desconhecido'}</div>
-                                                <div className="flex items-center gap-2 bg-stone-50 px-4 py-2 rounded-lg border border-stone-200">
-                                                    <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-stone-800" value={l.minutes} onChange={e => { const nl = p.laborItems.map(x=>x.id===l.id?{...x,minutes:e.target.value}:x); updateField('laborItems', nl); }}/> 
-                                                    <span className="text-xs font-bold text-stone-500 uppercase">minutos</span>
+                            {/* ABA 2: CUSTOS ADICIONAIS */}
+                            <div className={`space-y-6 ${editorTab==='custos' ? 'block animate-fadeIn' : 'hidden'}`}>
+                                {/* Mão de Obra */}
+                                <Card className="overflow-hidden border-0 shadow-md">
+                                    <div className="px-6 py-4 bg-stone-800 text-white flex items-center gap-3"><Clock size={20}/><h3 className="font-bold text-lg">Mão de Obra Operacional</h3></div>
+                                    <div className="p-6 space-y-3 bg-stone-50/30">
+                                        {p.laborItems?.map(l => {
+                                            const emp = settings.employees.find(e => e.id == l.employeeId);
+                                            return (
+                                                <div key={l.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
+                                                    <div className="flex-1 font-bold text-sm text-stone-800 pl-2">{emp?.name || 'Desconhecido'}</div>
+                                                    <div className="flex items-center gap-2 bg-stone-50 px-4 py-2 rounded-lg border border-stone-200">
+                                                        <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-stone-800" value={l.minutes} onChange={e => { const nl = p.laborItems.map(x=>x.id===l.id?{...x,minutes:e.target.value}:x); updateField('laborItems', nl); }}/> 
+                                                        <span className="text-xs font-bold text-stone-500 uppercase">minutos</span>
+                                                    </div>
+                                                    <button onClick={() => { const nl = p.laborItems.filter(x=>x.id!==l.id); updateField('laborItems', nl); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                                                 </div>
-                                                <button onClick={() => { const nl = p.laborItems.filter(x=>x.id!==l.id); updateField('laborItems', nl); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                            )
+                                        })}
+                                        <div className="flex flex-col sm:flex-row gap-3 mt-4 bg-stone-100 p-4 rounded-xl border border-stone-200 border-dashed">
+                                            <select id="newLaborEmp" className="flex-1 p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium outline-none"><option value="">Selecionar Profissional...</option>{settings.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+                                            <div className="flex gap-3">
+                                                <input id="newLaborMin" type="number" placeholder="Minutos" className="w-32 p-3 bg-white border border-stone-200 rounded-xl text-sm text-center outline-none font-bold"/>
+                                                <Button onClick={() => { 
+                                                    const empId = document.getElementById('newLaborEmp').value; const min = document.getElementById('newLaborMin').value;
+                                                    if(empId && min) { updateField('laborItems', [...(p.laborItems||[]), {id:generateId(), employeeId: empId, minutes: Number(min)}]); document.getElementById('newLaborEmp').value=''; document.getElementById('newLaborMin').value='';}
+                                                }} variant="secondary" className="px-6">Adicionar</Button>
                                             </div>
-                                        )
-                                    })}
-                                    <div className="flex flex-col sm:flex-row gap-3 mt-4 bg-stone-100 p-4 rounded-xl border border-stone-200 border-dashed">
-                                        <select id="newLaborEmp" className="flex-1 p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium outline-none"><option value="">Selecionar Profissional...</option>{settings.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
-                                        <div className="flex gap-3">
-                                            <input id="newLaborMin" type="number" placeholder="Minutos" className="w-32 p-3 bg-white border border-stone-200 rounded-xl text-sm text-center outline-none font-bold"/>
-                                            <Button onClick={() => { 
-                                                const empId = document.getElementById('newLaborEmp').value; const min = document.getElementById('newLaborMin').value;
-                                                if(empId && min) { updateField('laborItems', [...(p.laborItems||[]), {id:generateId(), employeeId: empId, minutes: Number(min)}]); document.getElementById('newLaborEmp').value=''; document.getElementById('newLaborMin').value='';}
-                                            }} variant="secondary" className="px-6">Adicionar</Button>
                                         </div>
                                     </div>
-                                </div>
-                            </Card>
+                                </Card>
 
-                            {/* Energia */}
-                            <Card className="overflow-hidden border-0 shadow-md">
-                                <div className="px-6 py-4 bg-yellow-500 text-yellow-950 flex items-center gap-3"><Zap size={20}/><h3 className="font-bold text-lg">Maquinário & Energia</h3></div>
-                                <div className="p-6 space-y-3 bg-stone-50/30">
-                                    {p.machineryItems?.map(m => {
-                                        return (
-                                            <div key={m.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
-                                                <select className="flex-1 p-2 text-sm font-bold text-stone-800 border-none bg-transparent outline-none" value={m.machineId} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,machineId:e.target.value}:x); updateField('machineryItems', nm); }}>{settings.machines.map(sm => <option key={sm.id} value={sm.id}>{sm.name}</option>)}</select>
-                                                <div className="flex items-center gap-2 bg-stone-50 px-4 py-2 rounded-lg border border-stone-200">
-                                                    <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-stone-800" value={m.timeMinutes} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,timeMinutes:e.target.value}:x); updateField('machineryItems', nm); }}/> 
-                                                    <span className="text-xs font-bold text-stone-500 uppercase">minutos</span>
+                                {/* Energia */}
+                                <Card className="overflow-hidden border-0 shadow-md">
+                                    <div className="px-6 py-4 bg-yellow-500 text-yellow-950 flex items-center gap-3"><Zap size={20}/><h3 className="font-bold text-lg">Maquinário & Energia</h3></div>
+                                    <div className="p-6 space-y-3 bg-stone-50/30">
+                                        {p.machineryItems?.map(m => {
+                                            return (
+                                                <div key={m.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
+                                                    <select className="flex-1 p-2 text-sm font-bold text-stone-800 border-none bg-transparent outline-none" value={m.machineId} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,machineId:e.target.value}:x); updateField('machineryItems', nm); }}>{settings.machines.map(sm => <option key={sm.id} value={sm.id}>{sm.name}</option>)}</select>
+                                                    <div className="flex items-center gap-2 bg-stone-50 px-4 py-2 rounded-lg border border-stone-200">
+                                                        <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-stone-800" value={m.timeMinutes} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,timeMinutes:e.target.value}:x); updateField('machineryItems', nm); }}/> 
+                                                        <span className="text-xs font-bold text-stone-500 uppercase">minutos</span>
+                                                    </div>
+                                                    <button onClick={() => { const nm = p.machineryItems.filter(x=>x.id!==m.id); updateField('machineryItems', nm); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                                                 </div>
-                                                <button onClick={() => { const nm = p.machineryItems.filter(x=>x.id!==m.id); updateField('machineryItems', nm); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
-                                            </div>
-                                        )
-                                    })}
-                                    <Button onClick={() => updateField('machineryItems', [...(p.machineryItems||[]), {id:generateId(), machineId: settings.machines[0]?.id, timeMinutes: 60}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-stone-600"><Plus size={16}/> Adicionar Uso de Máquina</Button>
-                                </div>
-                            </Card>
+                                            )
+                                        })}
+                                        <Button onClick={() => updateField('machineryItems', [...(p.machineryItems||[]), {id:generateId(), machineId: settings.machines[0]?.id, timeMinutes: 60}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-stone-600"><Plus size={16}/> Adicionar Uso de Máquina</Button>
+                                    </div>
+                                </Card>
 
-                            {/* Indiretos */}
-                            <Card className="overflow-hidden border-0 shadow-md">
-                                <div className="px-6 py-4 bg-brand-orange text-white flex items-center gap-3"><Coins size={20}/><h3 className="font-bold text-lg">Custos Indiretos / Taxas / Embalagens</h3></div>
-                                <div className="p-6 space-y-3 bg-stone-50/30">
-                                    <p className="text-xs font-medium text-stone-500 mb-4 bg-stone-100 p-3 rounded-lg border border-stone-200">Nota: Os itens importados das configurações padrão podem ser editados livremente apenas para esta ficha.</p>
-                                    {p.indirectItems?.map(ind => (
-                                        <div key={ind.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
-                                            <input type="text" placeholder="Descrição do Custo..." value={ind.name} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,name:e.target.value}:x); updateField('indirectItems', ni); }} className="flex-1 text-sm font-bold text-stone-800 outline-none pl-2 border-none bg-transparent"/>
-                                            <div className="flex items-center bg-stone-50 rounded-lg border border-stone-200 overflow-hidden">
-                                                <select value={ind.type || 'R$'} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,type:e.target.value}:x); updateField('indirectItems', ni); }} className="p-3 bg-stone-100 text-xs font-black text-stone-600 outline-none border-r border-stone-200 cursor-pointer">
-                                                    <option value="R$">R$</option>
-                                                    <option value="%">%</option>
-                                                </select>
-                                                <input type="number" step="0.01" className="w-24 bg-transparent text-right outline-none font-black text-stone-800 p-3" value={ind.cost} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,cost:e.target.value}:x); updateField('indirectItems', ni); }}/>
-                                            </div>
-                                            <button onClick={() => { const ni = p.indirectItems.filter(x=>x.id!==ind.id); updateField('indirectItems', ni); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
-                                        </div>
-                                    ))}
-                                    <Button onClick={() => updateField('indirectItems', [...(p.indirectItems||[]), {id:generateId(), name:'', cost:0, type: 'R$'}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-stone-600"><Plus size={16}/> Adicionar Novo Custo Indireto</Button>
-                                </div>
-                            </Card>
-                        </div>
-
-                        {/* ABA 3: PRECIFICAÇÃO */}
-                        <div className={`space-y-6 ${editorTab==='precificacao' ? 'block animate-fadeIn' : 'hidden print:block print:mt-8'}`}>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                <div className="space-y-8">
-                                    <Card className="p-6 border-t-4 border-stone-800 shadow-md">
-                                        <h3 className="font-black text-stone-900 border-b border-stone-100 pb-4 mb-5 uppercase text-sm tracking-widest">Estrutura de Custos (1 Lote)</h3>
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-brand-orange"></div> Matéria Prima</span><span className="font-black text-stone-800">R$ {formatMoney(t.directCost)}</span></div>
-                                            <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-stone-800"></div> Mão de Obra</span><span className="font-black text-stone-800">R$ {formatMoney(t.laborCost)}</span></div>
-                                            <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> Energia / Máquinas</span><span className="font-black text-stone-800">R$ {formatMoney(t.machineryCost)}</span></div>
-                                            <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-purple-500"></div> Indiretos & Taxas</span><span className="font-black text-stone-800">R$ {formatMoney(t.indirectCost)}</span></div>
-                                        </div>
-                                        <div className="mt-6 p-4 bg-stone-900 rounded-xl flex justify-between items-center shadow-inner">
-                                            <span className="font-bold text-stone-300 uppercase tracking-widest text-xs">Custo Total do Lote</span>
-                                            <span className="font-black text-2xl text-white">R$ {formatMoney(t.totalCost)}</span>
-                                        </div>
-                                    </Card>
-
-                                    <Card className="p-6 bg-gradient-to-br from-stone-50 to-stone-100 border-stone-200 shadow-md">
-                                        <h3 className="font-black text-stone-800 border-b border-stone-200 pb-4 mb-5 uppercase text-sm tracking-widest">Rendimento Técnico</h3>
-                                        <div className="space-y-5">
-                                            <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
-                                                <div><span className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Massa Bruta (Entrada)</span><span className="font-black text-xl text-stone-700">{t.grandTotalGrossKg.toFixed(3)} <span className="text-sm font-bold text-stone-400">kg</span></span></div>
-                                                <div className="bg-stone-100 p-2 rounded-full"><ArrowRight className="text-stone-400" size={20}/></div>
-                                                <div className="text-right"><span className="block text-[10px] font-bold text-brand-orange uppercase tracking-wider mb-1">Final (Após Quebras)</span><span className="font-black text-2xl text-stone-900">{t.finalYieldKg.toFixed(3)} <span className="text-sm font-bold text-brand-orange">kg</span></span></div>
-                                            </div>
-                                            
-                                            <div className="bg-white p-5 rounded-xl border-l-4 border-l-emerald-500 shadow-sm">
-                                                <span className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Custo Base ({p.outputType === 'unit' ? 'Por Unidade' : 'Por Quilo'})</span>
-                                                <span className="block font-black text-4xl text-emerald-600">R$ {formatMoney(t.baseCostForPricing)}</span>
-                                            </div>
-
-                                            {p.outputType === 'unit' && (
-                                                <div className="flex justify-between text-sm font-bold text-stone-500 px-2">
-                                                    <span>Peso Ref: {p.outputUnitWeight}{p.outputUnitMeasure}</span>
-                                                    <span>1 Lote rende ~{t.totalUnits} unidades</span>
+                                {/* Indiretos */}
+                                <Card className="overflow-hidden border-0 shadow-md">
+                                    <div className="px-6 py-4 bg-brand-orange text-white flex items-center gap-3"><Coins size={20}/><h3 className="font-bold text-lg">Custos Indiretos / Taxas / Embalagens</h3></div>
+                                    <div className="p-6 space-y-3 bg-stone-50/30">
+                                        <p className="text-xs font-medium text-stone-500 mb-4 bg-stone-100 p-3 rounded-lg border border-stone-200">Nota: Os itens importados das configurações padrão podem ser editados livremente apenas para esta ficha.</p>
+                                        {p.indirectItems?.map(ind => (
+                                            <div key={ind.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
+                                                <input type="text" placeholder="Descrição do Custo..." value={ind.name} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,name:e.target.value}:x); updateField('indirectItems', ni); }} className="flex-1 text-sm font-bold text-stone-800 outline-none pl-2 border-none bg-transparent"/>
+                                                <div className="flex items-center bg-stone-50 rounded-lg border border-stone-200 overflow-hidden">
+                                                    <select value={ind.type || 'R$'} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,type:e.target.value}:x); updateField('indirectItems', ni); }} className="p-3 bg-stone-100 text-xs font-black text-stone-600 outline-none border-r border-stone-200 cursor-pointer">
+                                                        <option value="R$">R$</option>
+                                                        <option value="%">%</option>
+                                                    </select>
+                                                    <input type="number" step="0.01" className="w-24 bg-transparent text-right outline-none font-black text-stone-800 p-3" value={ind.cost} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,cost:e.target.value}:x); updateField('indirectItems', ni); }}/>
                                                 </div>
-                                            )}
-                                        </div>
-                                    </Card>
-                                </div>
-
-                                <Card className="p-0 overflow-hidden border-brand-orange/30 shadow-xl print:break-inside-avoid flex flex-col h-full">
-                                    <div className="bg-brand-orange px-6 py-5 flex items-center gap-3"><TrendingUp className="text-white"/><h3 className="font-black text-white text-lg tracking-wide uppercase">Simulador de Preço</h3></div>
-                                    <div className="p-8 flex flex-col gap-8 flex-1 bg-white">
-                                        
-                                        <div className="space-y-6">
-                                            <div>
-                                                <label className="flex items-center justify-between text-sm font-bold text-stone-600 uppercase mb-2">
-                                                    <span>Markup Alvo (Margem %)</span>
-                                                </label>
-                                                <div className="relative">
-                                                    <input type="number" className="w-full p-4 bg-orange-50/50 border border-orange-200 rounded-xl text-brand-orange font-black text-2xl outline-none focus:ring-2 focus:ring-brand-orange transition-all" value={p.targetMargin} onChange={e => updateField('targetMargin', Number(e.target.value))} />
-                                                    <span className="absolute right-5 top-4 text-orange-400 font-black text-2xl">%</span>
-                                                </div>
+                                                <button onClick={() => { const ni = p.indirectItems.filter(x=>x.id!==ind.id); updateField('indirectItems', ni); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
                                             </div>
-                                            <div className="bg-stone-50 p-5 rounded-xl border border-stone-200 flex justify-between items-center">
-                                                <span className="block text-xs font-bold text-stone-500 uppercase w-32">Preço Sugerido ({p.outputType==='unit'?'Un':'Kg'})</span>
-                                                <span className="block text-3xl font-black text-stone-800">R$ {formatMoney(t.suggestedPrice)}</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-stone-900 rounded-2xl p-8 shadow-inner mt-auto">
-                                            <label className="block text-sm font-bold text-stone-400 uppercase mb-4 flex items-center gap-2 tracking-wider"><DollarSign size={18}/> Preço de Venda Real Praticado</label>
-                                            <div className="relative mb-8">
-                                                <span className="absolute left-4 top-4 text-white/50 font-black text-3xl">R$</span>
-                                                <input type="number" step="0.01" className="w-full p-4 pl-16 bg-white/10 border-2 border-white/20 rounded-xl text-4xl font-black text-white outline-none focus:border-emerald-500 transition-colors" value={p.manualSalePrice||''} onChange={e => updateField('manualSalePrice', Number(e.target.value))} placeholder={formatMoney(t.suggestedPrice)} />
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className={`p-4 rounded-xl border ${t.marginPercent >= p.targetMargin ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-red-500/20 border-red-500/30 text-red-400'}`}>
-                                                    <span className="block text-[10px] uppercase font-bold tracking-widest opacity-80 mb-1">Margem Real</span>
-                                                    <span className="block text-2xl font-black">{formatMoney(t.marginPercent)}%</span>
-                                                </div>
-                                                <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-                                                    <span className="block text-[10px] uppercase font-bold text-stone-400 tracking-widest mb-1">Lucro Bruto ({p.outputType==='unit'?'Un':'Kg'})</span>
-                                                    <span className="block text-2xl font-black text-white">R$ {formatMoney(t.grossProfit)}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
+                                        ))}
+                                        <Button onClick={() => updateField('indirectItems', [...(p.indirectItems||[]), {id:generateId(), name:'', cost:0, type: 'R$'}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-stone-600"><Plus size={16}/> Adicionar Novo Custo Indireto</Button>
                                     </div>
                                 </Card>
                             </div>
+
+                            {/* ABA 3: PRECIFICAÇÃO */}
+                            <div className={`space-y-6 ${editorTab==='precificacao' ? 'block animate-fadeIn' : 'hidden'}`}>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    <div className="space-y-8">
+                                        <Card className="p-6 border-t-4 border-stone-800 shadow-md">
+                                            <h3 className="font-black text-stone-900 border-b border-stone-100 pb-4 mb-5 uppercase text-sm tracking-widest">Estrutura de Custos (1 Lote)</h3>
+                                            <div className="space-y-4">
+                                                <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-brand-orange"></div> Matéria Prima</span><span className="font-black text-stone-800">R$ {formatMoney(t.directCost)}</span></div>
+                                                <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-stone-800"></div> Mão de Obra</span><span className="font-black text-stone-800">R$ {formatMoney(t.laborCost)}</span></div>
+                                                <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> Energia / Máquinas</span><span className="font-black text-stone-800">R$ {formatMoney(t.machineryCost)}</span></div>
+                                                <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-purple-500"></div> Indiretos & Taxas</span><span className="font-black text-stone-800">R$ {formatMoney(t.indirectCost)}</span></div>
+                                            </div>
+                                            <div className="mt-6 p-4 bg-stone-900 rounded-xl flex justify-between items-center shadow-inner">
+                                                <span className="font-bold text-stone-300 uppercase tracking-widest text-xs">Custo Total do Lote</span>
+                                                <span className="font-black text-2xl text-white">R$ {formatMoney(t.totalCost)}</span>
+                                            </div>
+                                        </Card>
+
+                                        <Card className="p-6 bg-gradient-to-br from-stone-50 to-stone-100 border-stone-200 shadow-md">
+                                            <h3 className="font-black text-stone-800 border-b border-stone-200 pb-4 mb-5 uppercase text-sm tracking-widest">Rendimento Técnico</h3>
+                                            <div className="space-y-5">
+                                                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                                                    <div><span className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Massa Bruta (Entrada)</span><span className="font-black text-xl text-stone-700">{t.grandTotalGrossKg.toFixed(3)} <span className="text-sm font-bold text-stone-400">kg</span></span></div>
+                                                    <div className="bg-stone-100 p-2 rounded-full"><ArrowRight className="text-stone-400" size={20}/></div>
+                                                    <div className="text-right"><span className="block text-[10px] font-bold text-brand-orange uppercase tracking-wider mb-1">Final (Após Quebras)</span><span className="font-black text-2xl text-stone-900">{t.finalYieldKg.toFixed(3)} <span className="text-sm font-bold text-brand-orange">kg</span></span></div>
+                                                </div>
+                                                
+                                                <div className="bg-white p-5 rounded-xl border-l-4 border-l-emerald-500 shadow-sm">
+                                                    <span className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Custo Base ({p.outputType === 'unit' ? 'Por Unidade' : 'Por Quilo'})</span>
+                                                    <span className="block font-black text-4xl text-emerald-600">R$ {formatMoney(t.baseCostForPricing)}</span>
+                                                </div>
+
+                                                {p.outputType === 'unit' && (
+                                                    <div className="flex justify-between text-sm font-bold text-stone-500 px-2">
+                                                        <span>Peso Ref: {p.outputUnitWeight}{p.outputUnitMeasure}</span>
+                                                        <span>1 Lote rende ~{t.totalUnits} unidades</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </Card>
+                                    </div>
+
+                                    <Card className="p-0 overflow-hidden border-brand-orange/30 shadow-xl flex flex-col h-full">
+                                        <div className="bg-brand-orange px-6 py-5 flex items-center gap-3"><TrendingUp className="text-white"/><h3 className="font-black text-white text-lg tracking-wide uppercase">Simulador de Preço</h3></div>
+                                        <div className="p-8 flex flex-col gap-8 flex-1 bg-white">
+                                            
+                                            <div className="space-y-6">
+                                                <div>
+                                                    <label className="flex items-center justify-between text-sm font-bold text-stone-600 uppercase mb-2">
+                                                        <span>Markup Alvo (Margem %)</span>
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input type="number" className="w-full p-4 bg-orange-50/50 border border-orange-200 rounded-xl text-brand-orange font-black text-2xl outline-none focus:ring-2 focus:ring-brand-orange transition-all" value={p.targetMargin} onChange={e => updateField('targetMargin', Number(e.target.value))} />
+                                                        <span className="absolute right-5 top-4 text-orange-400 font-black text-2xl">%</span>
+                                                    </div>
+                                                </div>
+                                                <div className="bg-stone-50 p-5 rounded-xl border border-stone-200 flex justify-between items-center">
+                                                    <span className="block text-xs font-bold text-stone-500 uppercase w-32">Preço Sugerido ({p.outputType==='unit'?'Un':'Kg'})</span>
+                                                    <span className="block text-3xl font-black text-stone-800">R$ {formatMoney(t.suggestedPrice)}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-stone-900 rounded-2xl p-8 shadow-inner mt-auto">
+                                                <label className="block text-sm font-bold text-stone-400 uppercase mb-4 flex items-center gap-2 tracking-wider"><DollarSign size={18}/> Preço de Venda Real Praticado</label>
+                                                <div className="relative mb-8">
+                                                    <span className="absolute left-4 top-4 text-white/50 font-black text-3xl">R$</span>
+                                                    <input type="number" step="0.01" className="w-full p-4 pl-16 bg-white/10 border-2 border-white/20 rounded-xl text-4xl font-black text-white outline-none focus:border-emerald-500 transition-colors" value={p.manualSalePrice||''} onChange={e => updateField('manualSalePrice', Number(e.target.value))} placeholder={formatMoney(t.suggestedPrice)} />
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className={`p-4 rounded-xl border ${t.marginPercent >= p.targetMargin ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-red-500/20 border-red-500/30 text-red-400'}`}>
+                                                        <span className="block text-[10px] uppercase font-bold tracking-widest opacity-80 mb-1">Margem Real</span>
+                                                        <span className="block text-2xl font-black">{formatMoney(t.marginPercent)}%</span>
+                                                    </div>
+                                                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                                                        <span className="block text-[10px] uppercase font-bold text-stone-400 tracking-widest mb-1">Lucro Bruto ({p.outputType==='unit'?'Un':'Kg'})</span>
+                                                        <span className="block text-2xl font-black text-white">R$ {formatMoney(t.grossProfit)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                </div>
+                            </div>
                         </div>
-                        
+
                         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 p-4 shadow-lg flex justify-center gap-4 z-50 md:hidden">
                              <Button onClick={handleSave} className="bg-brand-brown text-white w-full"><Save size={18}/> Guardar Produto</Button>
                         </div>
-
-                        {/* Modal Vinculo Estoque */}
-                        {editorIngModalOpen && (
-                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                                <div className="bg-white p-6 rounded-2xl w-96 max-h-[80vh] flex flex-col shadow-2xl">
-                                    <div className="flex justify-between items-center mb-4"><h3 className="font-bold text-lg text-stone-800 flex items-center gap-2"><Database className="text-brand-orange" size={20}/> Estoque Central</h3><button onClick={()=>setEditorIngModalOpen(false)} className="text-stone-400 hover:text-stone-800"><X/></button></div>
-                                    <p className="text-xs font-medium text-stone-500 mb-4">Selecione um insumo abaixo para vincular o preço automaticamente à ficha técnica.</p>
-                                    <div className="overflow-y-auto flex-1 custom-scroll pr-2 space-y-2">
-                                        {ingredients.map(ing => (
-                                            <div key={ing.id} onClick={() => handleLink(ing)} className="p-3 border border-stone-200 rounded-xl hover:border-brand-orange hover:bg-orange-50 cursor-pointer flex justify-between items-center transition-all group">
-                                                <div><div className="font-bold text-sm text-stone-800 group-hover:text-brand-orange">{ing.code ? `[${ing.code}] ` : ''}{ing.name}</div><div className="text-xs text-stone-500 font-bold mt-1">R$ {formatMoney(ing.price)} <span className="font-medium">/ {ing.unit}</span></div></div>
-                                                <LinkIcon size={16} className="text-stone-300 group-hover:text-brand-orange"/>
-                                            </div>
-                                        ))}
-                                        {ingredients.length === 0 && <p className="text-sm text-stone-500 text-center p-8 bg-stone-50 rounded-xl border-dashed border-2 border-stone-200">O seu estoque está vazio. Adicione insumos na aba Estoque no Menu Lateral.</p>}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 );
             };
@@ -1044,9 +1165,9 @@
                                 <div className="bg-stone-900 text-white px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
                                     <div className="flex items-center gap-3"><Database size={20} className="text-brand-orange"/><h3 className="font-bold text-lg tracking-wide">Base de Dados de Insumos</h3><span className="bg-white/10 px-2.5 py-1 rounded-lg text-xs font-black border border-white/10">{ingredients.length}</span></div>
                                     <div className="flex items-center gap-3 w-full sm:w-auto">
-                                        <div className="relative flex-1 sm:w-56 text-stone-900">
-                                            <Search className="absolute left-3 top-2.5 text-stone-400" size={16}/>
-                                            <input type="text" placeholder="Pesquisar Insumo..." value={invSearch} onChange={e=>setInvSearch(e.target.value)} className="w-full pl-10 pr-3 py-2 text-sm rounded-xl bg-white border-0 outline-none focus:ring-2 focus:ring-brand-orange font-medium"/>
+                                        <div className="relative flex-1 sm:w-64 text-stone-900">
+                                            <Search className="absolute left-3 top-2.5 text-stone-400" size={18}/>
+                                            <input type="text" placeholder="Pesquisa Inteligente (Nome ou Cód)..." value={invSearch} onChange={e=>setInvSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm rounded-xl bg-white border-0 outline-none focus:ring-2 focus:ring-brand-orange font-medium"/>
                                         </div>
                                         <button onClick={() => setView('inv_print')} className="bg-white/10 hover:bg-white/20 border border-white/10 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors" title="Imprimir Base de Dados"><FileOutput size={16}/> Ficha TI</button>
                                     </div>
@@ -1089,26 +1210,27 @@
                             <Button onClick={() => window.print()} className="bg-stone-900 text-white text-sm"><Printer size={18}/> Imprimir Ficha TI</Button>
                         </div>
                         <div className="text-center mb-10">
-                            <h1 className="text-3xl font-black uppercase tracking-widest text-stone-900 mb-2">Base de Dados de Insumos</h1>
-                            <p className="text-stone-500 font-medium uppercase tracking-widest text-xs">Relatório de Exportação para o Sistema Central (TI)</p>
-                            <p className="text-xs text-stone-400 mt-4 font-bold">Data de Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+                            {settings.logo && <img src={settings.logo} className="h-16 w-auto mx-auto mb-4" />}
+                            <h1 className="text-2xl font-bold uppercase tracking-widest text-stone-800">Ficha de Cadastro de Insumos</h1>
+                            <p className="text-stone-500">Para atualização no Sistema (TI)</p>
+                            <p className="text-xs text-stone-400 mt-1 font-bold">Data de Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
                         </div>
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="border-b-2 border-stone-900 text-stone-900 uppercase text-[10px] tracking-widest">
-                                    <th className="py-3 pl-4">Código ERP</th>
-                                    <th className="py-3">Descrição / Item</th>
-                                    <th className="py-3 text-center">Unidade</th>
-                                    <th className="py-3 pr-4 text-right">Preço de Referência</th>
+                                <tr className="border-b-2 border-stone-800 text-stone-800 uppercase text-xs">
+                                    <th className="py-2 pl-2">Código ERP</th>
+                                    <th className="py-2">Item / Descrição</th>
+                                    <th className="py-2 text-center">Unid.</th>
+                                    <th className="py-2 pr-2 text-right">Preço Ref. (R$)</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-stone-200">
                                 {filteredIngredients.map((i, idx) => (
                                     <tr key={idx} className="text-sm hover:bg-stone-50">
-                                        <td className="py-3 pl-4 font-mono font-bold text-stone-600">{i.code || <span className="text-stone-300 italic">Sem Código</span>}</td>
-                                        <td className="py-3 font-bold text-stone-900">{i.name}</td>
-                                        <td className="py-3 text-center text-stone-500 font-medium">{i.unit}</td>
-                                        <td className="py-3 pr-4 text-right text-stone-800 font-black">R$ {formatMoney(i.price)}</td>
+                                        <td className="py-2 pl-2 font-mono font-bold text-stone-600">{i.code || <span className="text-stone-300 italic">Sem Código</span>}</td>
+                                        <td className="py-2 font-medium text-stone-900">{i.name}</td>
+                                        <td className="py-2 text-center text-stone-600">{i.unit}</td>
+                                        <td className="py-2 pr-2 text-right text-stone-800 font-medium">{formatMoney(i.price)}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -1194,7 +1316,52 @@
                         </Card>
 
                         {order && (
-                            <Card className="border-none shadow-2xl overflow-hidden print-shadow-none">
+                            <div className="hidden print:block w-full bg-white text-black p-4 font-sans max-w-4xl mx-auto">
+                                <div className="flex justify-between items-start border-b-4 border-stone-900 pb-6 mb-8">
+                                    <div>
+                                        {settings.logo ? <img src={settings.logo} className="h-20 w-auto object-contain" /> : <div className="text-2xl font-black tracking-widest text-stone-300">EMPRESA</div>}
+                                    </div>
+                                    <div className="text-right">
+                                        <h1 className="text-3xl font-black uppercase tracking-widest text-stone-900">Ordem de Produção</h1>
+                                        <p className="text-stone-500 font-bold mt-1 tracking-widest">PRODUTO: {p.name}</p>
+                                        <p className="text-stone-500 text-xs mt-1">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-8 mb-8">
+                                    <div className="flex-1 grid grid-cols-2 gap-4 bg-stone-50 p-6 rounded-2xl border border-stone-200">
+                                        <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Cálculo Base</p><p className="font-bold text-lg text-stone-800">{order.referenceLabel}</p></div>
+                                        <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Equivalente a Lotes Padrão</p><p className="font-bold text-lg text-stone-800">{order.targetBatches.toFixed(3)}x Padrão</p></div>
+                                        <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Rendimento Final Alvo</p><p className="font-black text-brand-orange text-xl">{order.finalProductWeightKg.toFixed(3)} kg</p></div>
+                                        <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Massa Bruta Total (Entrada)</p><p className="font-bold text-lg text-stone-800">{order.grossTotal.toFixed(3)} kg</p></div>
+                                    </div>
+                                    {p.image ? (
+                                        <img src={p.image} className="w-40 h-40 object-cover rounded-2xl border border-stone-200 shadow-sm" />
+                                    ) : null}
+                                </div>
+
+                                <h3 className="font-black text-lg mb-3 uppercase tracking-widest border-b-2 border-stone-200 pb-2 text-stone-800">Guia de Separação de Ingredientes</h3>
+                                {order.sections.map((sec, sIdx) => (
+                                    <div key={sIdx} className="mb-6 border border-stone-200 rounded-lg overflow-hidden avoid-break">
+                                        <div className="bg-stone-100 px-4 py-2 flex justify-between items-center border-b border-stone-200">
+                                            <h3 className="font-bold text-stone-800 text-md">{sec.name}</h3>
+                                            <div className="text-xs text-stone-500 font-bold">Subtotal Alvo: <span className="text-stone-800">{sec.finalWeightKg.toFixed(3)} kg</span></div>
+                                        </div>
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-white border-b border-stone-100 text-stone-400 text-[10px] uppercase tracking-widest font-black"><tr><th className="px-4 py-2 w-2/3">Ingrediente</th><th className="px-4 py-2 text-right">Quantidade a Pesar</th></tr></thead>
+                                            <tbody className="divide-y divide-stone-100 bg-white">
+                                                {sec.ingredients.map((ing, i) => (
+                                                    <tr key={i}><td className="px-4 py-2 font-bold text-stone-800">{ing.name} {ing.fixedQty>0&&<span className="text-[9px] text-stone-500 ml-1 uppercase">(Fixo)</span>}</td><td className="px-4 py-2 text-right font-black text-xl text-stone-900">{ing.calcNet.toFixed(3)} <span className="text-xs text-stone-500 font-bold">{ing.unit}</span></td></tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {/* Omit the screen visualization card if order exists because it's printed above, but we show a summary on screen */}
+                        {order && (
+                            <Card className="border-none shadow-2xl overflow-hidden no-print">
                                 <div className="bg-stone-900 text-white p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                                     <div><span className="text-stone-400 text-[10px] font-bold uppercase tracking-widest block mb-2 flex items-center gap-2"><ClipboardList size={14}/> Ordem de Produção Emitida</span><h2 className="text-3xl font-black">{p.name}</h2><p className="text-sm font-medium text-stone-400 mt-2 bg-stone-800 inline-block px-3 py-1 rounded-lg">Cálculo Base: {order.referenceLabel}</p></div>
                                     <div className="md:text-right w-full md:w-auto bg-stone-800 md:bg-transparent p-4 md:p-0 rounded-xl"><span className="text-stone-400 text-[10px] font-bold uppercase tracking-widest block mb-2">Rendimento Alvo Estimado</span><span className="text-4xl font-black text-emerald-400">{order.finalProductWeightKg.toFixed(3)} <span className="text-xl text-emerald-600">kg</span></span>{p.outputType === 'unit' && p.outputUnitWeight > 0 && (<span className="block text-sm font-bold text-stone-400 mt-2">Equivalente a ~ {Math.floor(order.finalProductWeightKg / toKg(p.outputUnitWeight, p.outputUnitMeasure))} unidades</span>)}</div>
@@ -1203,21 +1370,6 @@
                                     <div className="flex flex-col md:flex-row gap-6 mb-10 bg-stone-50 p-6 rounded-2xl border border-stone-200 shadow-inner">
                                         <div className="flex-1 md:border-r border-stone-200 md:pr-6"><span className="block text-[10px] text-stone-500 uppercase font-bold tracking-widest mb-1">Múltiplo de Lotes Escalonado</span><span className="text-2xl font-black text-stone-800">{order.targetBatches.toFixed(3)}x <span className="text-sm font-bold text-stone-400">Padrão</span></span></div>
                                         <div className="flex-1 md:pl-6 pt-6 md:pt-0 border-t md:border-t-0 border-stone-200"><span className="block text-[10px] text-stone-500 uppercase font-bold tracking-widest mb-1">Massa Bruta Total (Entrada)</span><span className="text-2xl font-black text-stone-800">{order.grossTotal.toFixed(3)} <span className="text-sm font-bold text-stone-400">kg</span></span></div>
-                                    </div>
-                                    <div className="space-y-8">
-                                        {order.sections.map((sec, sIdx) => (
-                                            <div key={sIdx} className="border border-stone-200 rounded-2xl overflow-hidden avoid-break shadow-sm">
-                                                <div className="bg-stone-50 px-6 py-4 flex justify-between items-center border-b border-stone-200"><h3 className="font-black text-stone-800 flex items-center gap-3 text-lg"><div className="w-1.5 h-6 bg-brand-orange rounded-full"></div> {sec.name}</h3><div className="text-xs font-bold text-stone-500 bg-white px-3 py-1.5 rounded-lg border border-stone-200 shadow-sm">Subtotal: <strong className="text-stone-800">{sec.finalWeightKg.toFixed(3)} kg</strong> <span className="text-stone-400 font-medium">(P/ {sec.lossPct}%)</span></div></div>
-                                                <table className="w-full text-left text-sm">
-                                                    <thead className="bg-white border-b border-stone-100 text-stone-400 text-[10px] uppercase tracking-widest font-black"><tr><th className="px-6 py-4">Ingrediente a Separar</th><th className="px-6 py-4 text-right">Qtd P/ Balança</th></tr></thead>
-                                                    <tbody className="divide-y divide-stone-100 bg-white">
-                                                        {sec.ingredients.map((ing, i) => (
-                                                            <tr key={i} className="hover:bg-stone-50 transition-colors"><td className="px-6 py-4 font-bold text-stone-800 text-base">{ing.name} {ing.fixedQty>0&&<span className="text-[10px] text-blue-600 ml-2 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full font-bold tracking-wider">(Item de Setup Fixo)</span>}</td><td className="px-6 py-4 text-right font-black text-brand-orange text-2xl">{ing.calcNet.toFixed(3)} <span className="text-sm text-stone-400 font-bold">{ing.unit}</span></td></tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        ))}
                                     </div>
                                 </div>
                             </Card>
@@ -1309,7 +1461,7 @@
                         <NavHeader title="Configurações do Sistema" />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <Card className="p-6 md:col-span-2 flex flex-col md:flex-row items-center justify-between bg-stone-900 border-none shadow-md gap-4 text-white">
-                                <div><h3 className="font-bold text-lg flex items-center gap-2 mb-1"><Archive className="text-stone-400"/> Backup Integrado</h3><p className="text-sm text-stone-400 font-medium">Faça o download ou restaure toda a base de dados do seu navegador num único ficheiro JSON seguro.</p></div>
+                                <div><h3 className="font-bold text-lg flex items-center gap-2 mb-1"><Archive className="text-stone-400"/> Backup Integrado</h3><p className="text-sm text-stone-400 font-medium">Faça o download ou restaure toda a base de dados num único ficheiro JSON seguro.</p></div>
                                 <div className="flex gap-3 w-full md:w-auto"><div className="relative flex-1 md:flex-none"><input type="file" accept=".json" onChange={handleImport} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/><Button variant="secondary" className="w-full bg-white/10 text-white border-white/20 hover:bg-white/20"><Upload size={16}/> Restaurar</Button></div><Button onClick={handleExport} className="bg-brand-orange text-white flex-1 md:flex-none hover:bg-orange-600 border-none"><Download size={16}/> Exportar DB</Button></div>
                             </Card>
 
@@ -1317,7 +1469,17 @@
                                 <h3 className="font-black text-stone-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><ImageIcon size={16} className="text-stone-400"/> Logótipo da Empresa</h3>
                                 <div className="flex gap-5 items-center">
                                     <div className="w-24 h-24 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-200 flex items-center justify-center overflow-hidden relative group transition-colors hover:border-brand-orange hover:bg-orange-50 cursor-pointer">
-                                        <input type="file" accept="image/*" onChange={e => { const f = e.target.files[0]; if(f){ const r = new FileReader(); r.onloadend=()=>updateSettings({...settings, logo: r.result}); r.readAsDataURL(f); } }} className="absolute inset-0 opacity-0 cursor-pointer z-10"/>
+                                        <input type="file" accept="image/*" onChange={async (e) => { 
+                                            const f = e.target.files[0]; 
+                                            if(f){ 
+                                                try {
+                                                    const base64 = await compressImage(f, 400); // Comprime a logo para não sobrecarregar o DB
+                                                    updateSettings({...settings, logo: base64});
+                                                } catch(err) {
+                                                    notify("Erro ao processar o logótipo.");
+                                                }
+                                            } 
+                                        }} className="absolute inset-0 opacity-0 cursor-pointer z-10"/>
                                         {settings.logo ? <><img src={settings.logo} className="w-full h-full object-contain p-2"/><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><button onClick={()=>updateSettings({...settings, logo: null})} className="text-white bg-red-500 p-2 rounded-full relative z-20 hover:bg-red-600 transition-colors shadow-lg"><Trash2 size={16}/></button></div></> : <ImageIcon className="text-stone-300"/>}
                                     </div>
                                     <p className="text-xs text-stone-500 font-medium">Aparece no cabeçalho e nas impressões PDF.</p>
@@ -1358,12 +1520,12 @@
                             <Card className="p-6 border-none shadow-sm">
                                 <h3 className="font-black text-stone-800 mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]">Categorias de Produto</h3>
                                 <div className="flex gap-2 mb-6"><input value={setNewLine} onChange={e=>setSetNewLine(e.target.value)} placeholder="Ex: Padaria Fria" className="flex-1 p-3 border border-stone-200 bg-stone-50 rounded-xl text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" /><Button onClick={addLine} className="bg-stone-900 text-white px-4 rounded-xl"><Plus size={18}/></Button></div>
-                                <ul className="space-y-2">{settings.lines.map(l => <li key={l} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{l}<button onClick={()=>removeLine(l)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
+                                <ul className="space-y-2">{(settings.lines || []).map(l => <li key={l} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{l}<button onClick={()=>removeLine(l)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
                             </Card>
                             <Card className="p-6 border-none shadow-sm">
                                 <h3 className="font-black text-stone-800 mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]">Etapas de Processo</h3>
                                 <div className="flex gap-2 mb-6"><input value={setNewStage} onChange={e=>setSetNewStage(e.target.value)} placeholder="Ex: Forneamento" className="flex-1 p-3 border border-stone-200 bg-stone-50 rounded-xl text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" /><Button onClick={addStage} className="bg-stone-900 text-white px-4 rounded-xl"><Plus size={18}/></Button></div>
-                                <ul className="space-y-2">{settings.stages.map(s => <li key={s} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{s}<button onClick={()=>removeStage(s)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
+                                <ul className="space-y-2">{(settings.stages || []).map(s => <li key={s} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{s}<button onClick={()=>removeStage(s)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
                             </Card>
 
                             <Card className="p-6 md:col-span-2 border-none shadow-sm">
@@ -1374,7 +1536,7 @@
                                     <div className="md:col-span-2 flex gap-3"><input type="number" className="w-full border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-bold text-stone-800 text-center outline-none focus:border-brand-orange transition-colors" placeholder="Carga (Hrs/mês)" value={setNewEmployee.hoursMonth} onChange={e=>setSetNewEmployee({...setNewEmployee, hoursMonth: Number(e.target.value)})} /><Button onClick={addEmployee} className="bg-stone-900 text-white rounded-xl w-full">Registar</Button></div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {settings.employees.map(e => <div key={e.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{e.name}</div><div className="text-xs font-bold text-stone-400 tracking-wider">R$ {e.salary} <span className="font-medium text-stone-300">|</span> {e.hoursMonth}h/mês</div></div><button onClick={()=>removeEmployee(e.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
+                                    {(settings.employees || []).map(e => <div key={e.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{e.name}</div><div className="text-xs font-bold text-stone-400 tracking-wider">R$ {e.salary} <span className="font-medium text-stone-300">|</span> {e.hoursMonth}h/mês</div></div><button onClick={()=>removeEmployee(e.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
                                 </div>
                             </Card>
 
@@ -1386,7 +1548,7 @@
                                     <Button onClick={addMachine} className="bg-stone-900 text-white rounded-xl w-full">Registar Eq.</Button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {settings.machines.map(m => <div key={m.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{m.name}</div><div className="text-xs font-black text-brand-orange tracking-wider">{m.powerWatts} <span className="font-medium text-stone-400">Watts</span></div></div><button onClick={()=>removeMachine(m.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
+                                    {(settings.machines || []).map(m => <div key={m.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{m.name}</div><div className="text-xs font-black text-brand-orange tracking-wider">{m.powerWatts} <span className="font-medium text-stone-400">Watts</span></div></div><button onClick={()=>removeMachine(m.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
                                 </div>
                             </Card>
                         </div>
@@ -1449,12 +1611,22 @@
                                     )
                                 })}
                             </nav>
+                            <div className="p-6 border-t border-white/5 relative z-10">
+                                <div className="bg-white/5 rounded-2xl p-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        {user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center"><Users size={16} className="text-stone-400"/></div>}
+                                        <div className="flex flex-col text-left">
+                                            <span className="text-xs text-white font-bold truncate max-w-[100px]">{user?.displayName || 'Utilizador'}</span>
+                                            <button onClick={() => signOut(auth)} className="text-[10px] text-stone-500 hover:text-brand-orange transition-colors uppercase font-bold tracking-widest mt-0.5">Terminar Sessão</button>
+                                        </div>
+                                    </div>
+                                    <div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
+                                </div>
+                            </div>
                         </aside>
                     </div>
 
-                    {/* Desktop Sidebar */}
                     <aside id="sidebar-root" className={`hidden md:flex flex-col bg-stone-950 border-r border-stone-800 no-print flex-shrink-0 shadow-2xl z-40 relative transition-all duration-300 ease-in-out ${isSidebarExpanded ? 'w-72' : 'w-20'}`}>
-                        {/* Botão Retrátil */}
                         <button 
                             onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} 
                             className="absolute -right-3.5 top-10 w-7 h-7 bg-stone-800 border border-stone-700 rounded-full flex items-center justify-center text-stone-400 hover:text-white hover:bg-stone-700 transition-colors z-50 shadow-md"
