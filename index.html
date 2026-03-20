@@ -182,7 +182,7 @@
         );
 
         const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, ...props }) => {
-            const baseStyle = "px-4 py-2.5 rounded-xl font-medium transition-all active:scale-95 flex items-center gap-2 justify-center text-sm";
+            const baseStyle = "px-4 py-2.5 rounded-xl font-medium transition-all active:scale-95 flex items-center gap-2 justify-center text-sm relative overflow-hidden";
             const variants = {
                 primary: "bg-stone-900 text-white hover:bg-stone-800 disabled:opacity-50 shadow-sm",
                 secondary: "bg-white text-stone-700 hover:bg-stone-50 border border-stone-200 disabled:bg-stone-50 disabled:text-stone-400 shadow-sm",
@@ -253,6 +253,231 @@
                         <div className="flex items-center gap-3 text-red-600 mb-4 bg-red-50 p-3 rounded-lg w-fit"><AlertTriangle size={24} /></div>
                         <h3 className="text-lg font-bold text-stone-900 mb-2">{title}</h3><p className="text-stone-600 mb-6 text-sm">{message}</p>
                         <div className="flex justify-end gap-3"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" onClick={onConfirm}>Confirmar</Button></div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Modais de Importação ---
+        const ImportDataModal = ({ isOpen, onClose, onProcess }) => {
+            const [fileType, setFileType] = useState(null); 
+            const [fileContent, setFileContent] = useState('');
+            const [mimeType, setMimeType] = useState('');
+            const [workbookData, setWorkbookData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [stats, setStats] = useState('');
+
+            useEffect(() => {
+                if (!isOpen) { setFileType(null); setFileContent(''); setWorkbookData(null); setError(''); setLoading(false); setStats(''); }
+            }, [isOpen]);
+
+            const processLocalExcel = (workbook) => {
+                const newProducts = [];
+                workbook.SheetNames.forEach(sheetName => {
+                    const sheet = workbook.Sheets[sheetName];
+                    const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    
+                    let recipeName = sheetName;
+                    let yieldKg = 1;
+                    let ingredients = [];
+                    
+                    let currentSection = 'Geral';
+                    let inIngredients = false;
+                    let ingIdx = -1, qtyIdx = -1, priceIdx = -1, sectionIdx = 0, unitIdx = -1;
+
+                    for (let i = 0; i < rows.length; i++) {
+                        const row = rows[i] || [];
+                        if (row.length === 0) continue;
+                        
+                        const joinedRow = row.join(' ').replace(/\s+/g, ' ').trim();
+                        if (!joinedRow) continue;
+                        
+                        if (!inIngredients) {
+                            if (joinedRow.includes('Ficha de Custo -')) {
+                                const match = joinedRow.match(/Ficha de Custo -\s*([^,]+)/);
+                                if (match) recipeName = match[1].trim();
+                            }
+                            
+                            if (joinedRow.toLowerCase().includes('rendimento')) {
+                                const rendIdx = row.findIndex(c => typeof c === 'string' && c.toLowerCase().includes('rendimento'));
+                                if (rendIdx !== -1) {
+                                    const valStr = String(row[rendIdx + 1] || row[rendIdx + 2] || '').trim();
+                                    let val = parseFloat(valStr.replace(',', '.'));
+                                    if (!isNaN(val) && val > 0) {
+                                        if (valStr.toLowerCase().includes('g') && !valStr.toLowerCase().includes('kg')) {
+                                            val = val / 1000;
+                                        } else if (row[rendIdx + 2] && String(row[rendIdx + 2]).toLowerCase().trim() === 'g') {
+                                            val = val / 1000;
+                                        }
+                                        yieldKg = val;
+                                    }
+                                }
+                            }
+
+                            const headerRow = row.map(c => String(c || '').toLowerCase().trim());
+                            const tempIngIdx = headerRow.findIndex(c => c === 'ingrediente' || c === 'ingredientes' || c.includes('descrição') || c === 'item' || c === 'produto');
+                            const tempQtyIdx = headerRow.findIndex(c => c === 'quantidade' || c === 'qtd' || c === 'peso' || c === 'quant.');
+                            
+                            if (tempIngIdx !== -1 && tempQtyIdx !== -1) {
+                                inIngredients = true;
+                                ingIdx = tempIngIdx;
+                                qtyIdx = tempQtyIdx;
+                                priceIdx = headerRow.findIndex(c => c.includes('preço') || c.includes('preco') || c.includes('custo unit') || c.includes('valor') || c === 'custo (kg)');
+                                unitIdx = headerRow.findIndex(c => c === 'unidade' || c === 'und' || c === 'unid' || c === 'un');
+                                sectionIdx = ingIdx > 0 ? ingIdx - 1 : 0;
+                            }
+                        } else {
+                            const ingName = String(row[ingIdx] || '').trim();
+                            const rawQty = row[qtyIdx];
+                            
+                            if (!ingName && !rawQty) continue;
+                            
+                            const lowerIngName = ingName.toLowerCase();
+                            if (lowerIngName.includes('custo total') || lowerIngName.includes('rendimento') || lowerIngName.includes('lucro') || lowerIngName.includes('observação') || lowerIngName === 'total') {
+                                inIngredients = false; 
+                                continue;
+                            }
+
+                            const secVal = String(row[sectionIdx] || '').trim();
+                            if (secVal && secVal !== ingName && !secVal.toLowerCase().includes('total')) {
+                                currentSection = secVal;
+                            }
+
+                            let qty = parseFloat(String(rawQty || '').replace(',', '.'));
+                            if (isNaN(qty)) qty = 0;
+
+                            let price = 0;
+                            if (priceIdx !== -1) {
+                                let priceStr = String(row[priceIdx] || '').replace(/R\$|\s/g, '').replace(',', '.');
+                                price = parseFloat(priceStr);
+                                if (isNaN(price)) price = 0;
+                            }
+
+                            let unit = 'kg';
+                            if (unitIdx !== -1 && row[unitIdx]) {
+                                unit = String(row[unitIdx]).trim().toLowerCase();
+                            } else if (row[qtyIdx + 1]) {
+                                unit = String(row[qtyIdx + 1]).trim().toLowerCase(); 
+                            }
+                            if (!unit || unit.length > 5) unit = 'un';
+
+                            if (ingName && qty > 0) {
+                                ingredients.push({
+                                    section: currentSection || 'Geral',
+                                    name: ingName,
+                                    quantity: qty,
+                                    unit: unit,
+                                    unitPrice: price
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (ingredients.length > 0) {
+                        newProducts.push({ recipeName, yieldKg, ingredients });
+                    }
+                });
+                return { products: newProducts };
+            };
+
+            const handleFile = async (e) => {
+                const files = Array.from(e.target.files);
+                if (!files.length) return;
+                setLoading(true); setError(''); setStats('');
+                
+                try {
+                    let isExcelOrCsv = false;
+                    const combinedWorkbook = window.XLSX.utils.book_new();
+                    let sheetsAdded = 0;
+
+                    for (const f of files) {
+                        if (f.name.endsWith('.xlsx') || f.name.endsWith('.xls') || f.name.endsWith('.csv')) {
+                            isExcelOrCsv = true;
+                            const data = await f.arrayBuffer();
+                            const wb = window.XLSX.read(data, { type: 'array' });
+                            
+                            wb.SheetNames.forEach(name => {
+                                let safeName = name;
+                                if (f.name.endsWith('.csv')) {
+                                    safeName = f.name.replace('.csv', '').substring(0, 31);
+                                }
+                                while (combinedWorkbook.SheetNames.includes(safeName)) {
+                                    safeName = safeName.substring(0, 28) + (Math.floor(Math.random() * 100));
+                                }
+                                window.XLSX.utils.book_append_sheet(combinedWorkbook, wb.Sheets[name], safeName);
+                                sheetsAdded++;
+                            });
+                        }
+                    }
+                    
+                    if (isExcelOrCsv && sheetsAdded > 0) {
+                        setWorkbookData(combinedWorkbook);
+                        setFileType('excel');
+                        setStats(`Ficheiros reconhecidos! Encontrada(s) ${sheetsAdded} receita(s) para importação combinada.`);
+                    } else {
+                        setError("Formato de ficheiro não suportado. Por favor, utilize ficheiros Excel (.xlsx, .xls) ou CSV.");
+                    }
+                } catch (err) {
+                    setError("Erro ao ler ficheiros. Tente novamente.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const processData = async () => {
+                if (!fileType) return setError("Faça o upload de um ficheiro primeiro.");
+                setLoading(true); setError('');
+
+                try {
+                    const result = processLocalExcel(workbookData);
+                    if (!result.products || result.products.length === 0) {
+                        throw new Error("O sistema não conseguiu identificar o formato dos ingredientes na planilha. Verifique se as colunas 'Ingrediente' e 'Quantidade' existem.");
+                    }
+                    onProcess(result);
+                } catch (err) {
+                    setError(err.message || "Erro ao processar o ficheiro. Verifique o formato.");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b flex justify-between items-center bg-stone-50">
+                            <h3 className="font-bold text-lg flex items-center gap-2 text-stone-800"><FileSpreadsheet className="text-brand-orange"/> Importação de Planilhas</h3>
+                            <button onClick={onClose} disabled={loading} className="text-stone-400 hover:text-stone-600"><X/></button>
+                        </div>
+                        <div className="p-6 overflow-y-auto custom-scroll">
+                            <p className="text-sm text-stone-500 mb-4">Selecione <strong>uma ou várias Planilhas (Excel/CSV)</strong>. O sistema vai extrair as receitas em lote, alimentar o seu catálogo e criar os itens no estoque instantaneamente!</p>
+                            
+                            {!fileType ? (
+                                <div className="relative">
+                                    <input type="file" accept=".xlsx, .xls, .csv" multiple className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" onChange={handleFile} />
+                                    <div className="border-2 border-dashed border-stone-300 rounded-xl p-8 flex flex-col items-center justify-center text-stone-400 hover:bg-stone-50 hover:border-brand-orange transition-colors relative z-10 text-center">
+                                        <Upload size={32} className="mb-2 text-brand-orange" />
+                                        <span className="font-bold text-stone-700">Clique para enviar Ficheiro(s)</span>
+                                        <span className="text-xs text-stone-400 mt-1">Suporta: Múltiplos Excels (.xlsx), CSV</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="relative rounded-xl p-6 border border-stone-200 bg-stone-50 flex flex-col items-center text-center">
+                                    <FileSpreadsheet size={48} className="text-green-600 mb-3"/>
+                                    <p className="font-bold text-stone-800">{stats}</p>
+                                    {!loading && <button onClick={() => setFileType(null)} className="mt-4 text-xs font-bold text-red-500 hover:underline">Cancelar e escolher outro ficheiro</button>}
+                                </div>
+                            )}
+
+                            {error && <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">{error}</div>}
+                        </div>
+                        <div className="p-4 border-t bg-stone-50">
+                            <Button onClick={processData} disabled={!fileType || loading} variant="primary" className="w-full h-12 text-lg bg-brand-orange hover:bg-orange-600">
+                                {loading ? <><Loader2 className="animate-spin" size={20}/> Extraindo Dados...</> : 'Processar e Importar Produtos'}
+                            </Button>
+                        </div>
                     </div>
                 </div>
             );
@@ -374,7 +599,7 @@
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await signInWithCustomToken(auth, __initial_auth_token);
                         } else {
-                            await signInAnonymously(auth); // Fallback para manter a aplicação a funcionar no canvas
+                            await signInAnonymously(auth); 
                         }
                     } catch (error) {
                         console.error("Auth error:", error);
@@ -482,7 +707,7 @@
             const pLength = editingProduct?.ingredients?.length || 0;
             useEffect(() => {
                 if (editingProduct) {
-                    const currentSections = Array.from(new Set(editingProduct.ingredients.map(i => i.section || settings.stages[0])));
+                    const currentSections = Array.from(new Set(editingProduct.ingredients.map(i => i.section || settings?.stages?.[0] || 'Massa')));
                     let changed = false; 
                     const newSecs = { ...editingProduct.sections };
                     currentSections.forEach(s => { 
@@ -495,7 +720,7 @@
                         setEditingProduct(prev => ({ ...prev, sections: newSecs }));
                     }
                 }
-            }, [pLength, settings.stages]); 
+            }, [pLength, settings?.stages]); 
 
             const notify = (msg) => { setNotification(msg); setTimeout(() => setNotification(null), 3000); };
 
@@ -547,7 +772,7 @@
 
                 let laborCost = 0;
                 (prod.laborItems || []).forEach(l => {
-                    const emp = settings.employees.find(e => e.id == l.employeeId);
+                    const emp = (settings?.employees || []).find(e => e.id == l.employeeId);
                     if (emp) {
                         const costPerMin = emp.salary / (emp.hoursMonth * 60);
                         laborCost += (costPerMin * safeVal(l.minutes));
@@ -556,9 +781,9 @@
 
                 let machineryCost = 0;
                 (prod.machineryItems || []).forEach(m => {
-                    const mach = settings.machines.find(x => x.id == m.machineId);
+                    const mach = (settings?.machines || []).find(x => x.id == m.machineId);
                     if (mach) {
-                        machineryCost += ((mach.powerWatts / 1000) * (safeVal(m.timeMinutes) / 60) * settings.kwhPrice);
+                        machineryCost += ((mach.powerWatts / 1000) * (safeVal(m.timeMinutes) / 60) * (settings?.kwhPrice || 0));
                     }
                 });
 
@@ -601,6 +826,73 @@
                     suggestedPrice, salePrice, grossProfit, marginPercent,
                     baseCostForPricing
                 };
+            };
+
+            const handleProcessImportedData = async (data) => {
+                const productsToProcess = data.products || (data.recipeName ? [data] : []);
+                let countImported = 0;
+                const finalIngredientsList = [...ingredients];
+                
+                productsToProcess.forEach(prodData => {
+                    (prodData.ingredients || []).forEach(ing => {
+                        if (!ing.name) return;
+                        
+                        let invItem = finalIngredientsList.find(i => i.name.toLowerCase().trim() === ing.name.toLowerCase().trim());
+                        
+                        if (!invItem) {
+                            invItem = { id: generateId(), code: '', name: ing.name, price: safeVal(ing.unitPrice), unit: ing.unit || 'kg' };
+                            finalIngredientsList.push(invItem);
+                        } else if (safeVal(ing.unitPrice) > 0) {
+                            invItem.price = safeVal(ing.unitPrice);
+                        }
+                        
+                        ing.ingredientId = invItem.id;
+                    });
+                });
+
+                const newProducts = [];
+                productsToProcess.forEach(prodData => {
+                    const recipeIngs = (prodData.ingredients || []).map(ing => ({
+                        id: generateId(), name: ing.name, qty: safeVal(ing.quantity), unit: ing.unit || 'kg', cost: safeVal(ing.unitPrice), section: ing.section || settings?.stages?.[0] || 'Massa', fixedQty: 0, ingredientId: ing.ingredientId 
+                    })).filter(i => i.name);
+
+                    const defaults = (settings?.defaultIndirectCosts || []).map(d => ({ ...d, id: generateId() }));
+
+                    newProducts.push({
+                        ...INITIAL_PRODUCT,
+                        id: generateId(),
+                        name: prodData.recipeName || 'Receita Importada',
+                        yieldUnit: prodData.yieldKg || 1, 
+                        ingredients: recipeIngs,
+                        indirectItems: defaults
+                    });
+                });
+
+                countImported = newProducts.length;
+
+                if (user) {
+                    try {
+                        const batch = writeBatch(db);
+                        newProducts.forEach(p => batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'catalog', p.id), p));
+                        finalIngredientsList.forEach(ing => batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ing.id), ing, { merge: true }));
+                        await batch.commit();
+                    } catch (e) {
+                        console.error("Batch write error:", e);
+                    }
+                }
+
+                setImportDataModalOpen(false);
+                
+                setTimeout(() => {
+                    if (countImported === 1) {
+                        setEditingProduct(newProducts[0]);
+                        setEditorTab('receita');
+                        setView('catalog_editor');
+                    } else {
+                        setView('catalog_list');
+                    }
+                    notify(`${countImported} receita(s) importada(s) com sucesso!`);
+                }, 50);
             };
 
             // ==========================================
@@ -664,8 +956,9 @@
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-stone-200 pb-4">
                         <h2 className="text-2xl font-bold text-stone-900 leading-tight">Catálogo de Fichas Técnicas</h2>
                         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                            <Button onClick={() => setImportDataModalOpen(true)} variant="secondary" className="text-sm flex-1 sm:flex-none whitespace-nowrap border-brand-orange text-brand-orange hover:bg-orange-50"><FileSpreadsheet size={16}/> Importar Ficheiros</Button>
                             <Button onClick={() => { 
-                                const defaults = (settings.defaultIndirectCosts || []).map(d => ({ ...d, id: generateId() }));
+                                const defaults = (settings?.defaultIndirectCosts || []).map(d => ({ ...d, id: generateId() }));
                                 setEditingProduct({...INITIAL_PRODUCT, id: generateId(), indirectItems: defaults}); 
                                 setView('catalog_editor'); 
                                 setEditorTab('receita'); 
@@ -700,7 +993,7 @@
                 <div className="hidden print:block w-full bg-white text-black p-4 font-sans max-w-4xl mx-auto">
                     <div className="flex justify-between items-start border-b-4 border-stone-900 pb-6 mb-8">
                         <div>
-                            {settings.logo ? <img src={settings.logo} className="h-20 w-auto object-contain" /> : <div className="text-2xl font-black tracking-widest text-stone-300">EMPRESA</div>}
+                            {settings?.logo ? <img src={settings.logo} className="h-20 w-auto object-contain" /> : <div className="text-2xl font-black tracking-widest text-stone-300">EMPRESA</div>}
                         </div>
                         <div className="text-right">
                             <h1 className="text-3xl font-black uppercase tracking-widest text-stone-900">Ficha Técnica e de Custos</h1>
@@ -767,7 +1060,7 @@
                 if (!editingProduct) return <div className="p-10 text-center text-stone-500"><Loader2 className="animate-spin mx-auto mb-4"/>A carregar editor...</div>;
                 const p = editingProduct;
                 const t = calculateProductData(p);
-                const activeSections = Array.from(new Set(p.ingredients.map(i => i.section || settings.stages[0])));
+                const activeSections = Array.from(new Set(p.ingredients.map(i => i.section || settings?.stages?.[0] || 'Massa')));
 
                 const updateField = (f, v) => setEditingProduct({ ...p, [f]: v });
                 const updateIng = (idx, f, v) => { const newIngs = [...p.ingredients]; newIngs[idx][f] = v; setEditingProduct({ ...p, ingredients: newIngs }); };
@@ -836,23 +1129,23 @@
 
                             {/* Cabeçalho do Produto com Imagem */}
                             <div className="bg-white rounded-xl shadow-sm border border-stone-200 p-6 mb-6 flex flex-col md:flex-row gap-6">
-                                <div className="flex-shrink-0 w-full md:w-48 h-48 bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 flex items-center justify-center overflow-hidden relative group cursor-pointer transition-colors hover:border-brand-orange hover:bg-orange-50">
-                                    <input type="file" accept="image/*" onChange={handleProductImageUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10"/>
+                                <div className="flex-shrink-0 w-full md:w-48 h-48 bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 flex items-center justify-center overflow-hidden relative group cursor-pointer transition-colors hover:border-brand-orange hover:bg-orange-50 z-0">
+                                    <input type="file" accept="image/*" onChange={handleProductImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"/>
                                     {p.image ? (
                                         <>
-                                            <img src={p.image} className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                <button onClick={(e) => { e.preventDefault(); updateField('image', null); }} className="text-white bg-red-500 p-2 rounded-full relative z-20 hover:bg-red-600 transition-colors shadow-lg"><Trash2 size={16}/></button>
+                                            <img src={p.image} className="w-full h-full object-cover relative z-0" />
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
+                                                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateField('image', null); }} className="text-white bg-red-500 p-2 rounded-full relative z-30 hover:bg-red-600 transition-colors shadow-lg"><Trash2 size={16}/></button>
                                             </div>
                                         </>
                                     ) : (
-                                        <div className="flex flex-col items-center text-stone-400 group-hover:text-brand-orange transition-colors"><ImageIcon size={32} className="mb-2"/><span className="text-xs font-bold uppercase tracking-widest text-center px-4">Adicionar Foto</span></div>
+                                        <div className="flex flex-col items-center text-stone-400 group-hover:text-brand-orange transition-colors relative z-0"><ImageIcon size={32} className="mb-2"/><span className="text-xs font-bold uppercase tracking-widest text-center px-4">Adicionar Foto</span></div>
                                     )}
                                 </div>
 
                                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 content-start">
                                     <div className="md:col-span-2"><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Nome do Produto</label><input type="text" value={p.name} onChange={e => updateField('name', e.target.value)} className="w-full p-3 border border-stone-300 rounded-xl outline-none font-bold text-stone-800 focus:border-brand-orange focus:ring-1 focus:ring-orange-500 transition-all text-lg" placeholder="Ex: Pão Francês Tradicional" /></div>
-                                    <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Linha / Categoria</label><SearchableSelect options={settings.lines} value={p.line} onChange={(val) => updateField('line', val)} /></div>
+                                    <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Linha / Categoria</label><SearchableSelect options={settings?.lines || []} value={p.line} onChange={(val) => updateField('line', val)} /></div>
                                     <div>
                                         <label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Formato de Venda</label>
                                         <select value={p.outputType} onChange={e => updateField('outputType', e.target.value)} className="w-full p-3 border border-stone-300 rounded-xl outline-none focus:border-brand-orange bg-white text-sm font-bold text-stone-800 transition-all">
@@ -889,12 +1182,12 @@
                                         <div className="mx-auto w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4"><ChefHat className="text-stone-400 w-8 h-8"/></div>
                                         <h3 className="text-lg font-bold text-stone-700">Comece a sua Receita</h3>
                                         <p className="text-sm text-stone-500 mb-6 max-w-sm mx-auto">Adicione os ingredientes, organize por etapas do processo (Ex: Massa, Recheio) e estabeleça os padrões de perda.</p>
-                                        <Button onClick={() => addIng(settings.stages[0])} variant="brand" className="mx-auto px-6 py-3"><Plus size={18}/> Adicionar Primeiro Ingrediente</Button>
+                                        <Button onClick={() => addIng(settings?.stages?.[0] || 'Massa')} variant="brand" className="mx-auto px-6 py-3"><Plus size={18}/> Adicionar Primeiro Ingrediente</Button>
                                     </div>
                                 )}
 
                                 {activeSections.map((secName) => {
-                                    const secIngs = p.ingredients.map((ing, i) => ({...ing, originalIdx: i})).filter(ing => (ing.section || settings.stages[0]) === secName);
+                                    const secIngs = p.ingredients.map((ing, i) => ({...ing, originalIdx: i})).filter(ing => (ing.section || settings?.stages?.[0] || 'Massa') === secName);
                                     const secLoss = p.sections?.[secName]?.processLossPct || 0;
                                     
                                     return (
@@ -944,7 +1237,7 @@
                                 <div className="bg-stone-50 p-6 border-2 border-dashed border-stone-200 rounded-2xl text-center no-print">
                                     <span className="block text-sm text-stone-600 font-bold mb-4 uppercase tracking-wider">Criar Nova Etapa de Produção:</span>
                                     <div className="inline-flex flex-wrap gap-2 justify-center">
-                                        {settings.stages.map(s => <button key={s} onClick={() => addIng(s)} className="px-4 py-2 bg-white border shadow-sm rounded-xl text-xs font-bold text-stone-700 hover:border-brand-orange hover:text-brand-orange transition-all">+ {s}</button>)}
+                                        {(settings?.stages || []).map(s => <button key={s} onClick={() => addIng(s)} className="px-4 py-2 bg-white border shadow-sm rounded-xl text-xs font-bold text-stone-700 hover:border-brand-orange hover:text-brand-orange transition-all">+ {s}</button>)}
                                     </div>
                                 </div>
                             </div>
@@ -956,7 +1249,7 @@
                                     <div className="px-6 py-4 bg-stone-800 text-white flex items-center gap-3"><Clock size={20}/><h3 className="font-bold text-lg">Mão de Obra Operacional</h3></div>
                                     <div className="p-6 space-y-3 bg-stone-50/30">
                                         {p.laborItems?.map(l => {
-                                            const emp = settings.employees.find(e => e.id == l.employeeId);
+                                            const emp = (settings?.employees || []).find(e => e.id == l.employeeId);
                                             return (
                                                 <div key={l.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
                                                     <div className="flex-1 font-bold text-sm text-stone-800 pl-2">{emp?.name || 'Desconhecido'}</div>
@@ -969,7 +1262,7 @@
                                             )
                                         })}
                                         <div className="flex flex-col sm:flex-row gap-3 mt-4 bg-stone-100 p-4 rounded-xl border border-stone-200 border-dashed">
-                                            <select id="newLaborEmp" className="flex-1 p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium outline-none"><option value="">Selecionar Profissional...</option>{settings.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+                                            <select id="newLaborEmp" className="flex-1 p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium outline-none"><option value="">Selecionar Profissional...</option>{(settings?.employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
                                             <div className="flex gap-3">
                                                 <input id="newLaborMin" type="number" placeholder="Minutos" className="w-32 p-3 bg-white border border-stone-200 rounded-xl text-sm text-center outline-none font-bold"/>
                                                 <Button onClick={() => { 
@@ -988,7 +1281,7 @@
                                         {p.machineryItems?.map(m => {
                                             return (
                                                 <div key={m.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
-                                                    <select className="flex-1 p-2 text-sm font-bold text-stone-800 border-none bg-transparent outline-none" value={m.machineId} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,machineId:e.target.value}:x); updateField('machineryItems', nm); }}>{settings.machines.map(sm => <option key={sm.id} value={sm.id}>{sm.name}</option>)}</select>
+                                                    <select className="flex-1 p-2 text-sm font-bold text-stone-800 border-none bg-transparent outline-none" value={m.machineId} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,machineId:e.target.value}:x); updateField('machineryItems', nm); }}>{(settings?.machines || []).map(sm => <option key={sm.id} value={sm.id}>{sm.name}</option>)}</select>
                                                     <div className="flex items-center gap-2 bg-stone-50 px-4 py-2 rounded-lg border border-stone-200">
                                                         <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-stone-800" value={m.timeMinutes} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,timeMinutes:e.target.value}:x); updateField('machineryItems', nm); }}/> 
                                                         <span className="text-xs font-bold text-stone-500 uppercase">minutos</span>
@@ -997,7 +1290,7 @@
                                                 </div>
                                             )
                                         })}
-                                        <Button onClick={() => updateField('machineryItems', [...(p.machineryItems||[]), {id:generateId(), machineId: settings.machines[0]?.id, timeMinutes: 60}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-stone-600"><Plus size={16}/> Adicionar Uso de Máquina</Button>
+                                        <Button onClick={() => updateField('machineryItems', [...(p.machineryItems||[]), {id:generateId(), machineId: settings?.machines?.[0]?.id, timeMinutes: 60}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-stone-600"><Plus size={16}/> Adicionar Uso de Máquina</Button>
                                     </div>
                                 </Card>
 
@@ -1104,6 +1397,7 @@
                                                     </div>
                                                 </div>
                                             </div>
+
                                         </div>
                                     </Card>
                                 </div>
@@ -1210,7 +1504,7 @@
                             <Button onClick={() => window.print()} className="bg-stone-900 text-white text-sm"><Printer size={18}/> Imprimir Ficha TI</Button>
                         </div>
                         <div className="text-center mb-10">
-                            {settings.logo && <img src={settings.logo} className="h-16 w-auto mx-auto mb-4" />}
+                            {settings?.logo && <img src={settings.logo} className="h-16 w-auto mx-auto mb-4" />}
                             <h1 className="text-2xl font-bold uppercase tracking-widest text-stone-800">Ficha de Cadastro de Insumos</h1>
                             <p className="text-stone-500">Para atualização no Sistema (TI)</p>
                             <p className="text-xs text-stone-400 mt-1 font-bold">Data de Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
@@ -1244,7 +1538,7 @@
                 const t = p ? calculateProductData(p) : null;
                 let basisOptions = [];
                 if (p) {
-                    const activeSections = Array.from(new Set(p.ingredients.map(i => i.section || settings.stages[0])));
+                    const activeSections = Array.from(new Set(p.ingredients.map(i => i.section || settings?.stages?.[0] || 'Massa')));
                     activeSections.forEach(s => basisOptions.push({ label: `[ETAPA] ${s}`, value: `SECTION:${s}` }));
                     p.ingredients.forEach(i => basisOptions.push({ label: `[ING] ${i.name}`, value: `ING:${i.name}:${i.section}` }));
                 }
@@ -1252,11 +1546,11 @@
                 let order = null;
                 if (p && t) {
                     let factor = 1; let targetBatches = 0; let referenceLabel = "Padrão";
-                    const activeSections = Array.from(new Set(p.ingredients.map(i => i.section || settings.stages[0])));
+                    const activeSections = Array.from(new Set(p.ingredients.map(i => i.section || settings?.stages?.[0] || 'Massa')));
                     const sectionsData = {};
                     
                     activeSections.forEach(secName => {
-                        const secIngs = p.ingredients.filter(i => (i.section || settings.stages[0]) === secName);
+                        const secIngs = p.ingredients.filter(i => (i.section || settings?.stages?.[0] || 'Massa') === secName);
                         const lossPct = p.sections?.[secName]?.processLossPct || 0;
                         const secGross = secIngs.reduce((acc, curr) => isPackaging(curr.name) ? acc : acc + toKg(safeVal(curr.qty), curr.unit), 0);
                         sectionsData[secName] = { secGross, yieldKg: secGross * (1 - lossPct/100) };
@@ -1274,7 +1568,7 @@
 
                     const sectionsOut = []; let grossTotal = 0;
                     activeSections.forEach(secName => {
-                        const secIngs = p.ingredients.filter(i => (i.section || settings.stages[0]) === secName);
+                        const secIngs = p.ingredients.filter(i => (i.section || settings?.stages?.[0] || 'Massa') === secName);
                         const lossPct = p.sections?.[secName]?.processLossPct || 0;
                         let secGross = 0;
                         const scaledIngs = secIngs.map(ing => {
@@ -1316,52 +1610,7 @@
                         </Card>
 
                         {order && (
-                            <div className="hidden print:block w-full bg-white text-black p-4 font-sans max-w-4xl mx-auto">
-                                <div className="flex justify-between items-start border-b-4 border-stone-900 pb-6 mb-8">
-                                    <div>
-                                        {settings.logo ? <img src={settings.logo} className="h-20 w-auto object-contain" /> : <div className="text-2xl font-black tracking-widest text-stone-300">EMPRESA</div>}
-                                    </div>
-                                    <div className="text-right">
-                                        <h1 className="text-3xl font-black uppercase tracking-widest text-stone-900">Ordem de Produção</h1>
-                                        <p className="text-stone-500 font-bold mt-1 tracking-widest">PRODUTO: {p.name}</p>
-                                        <p className="text-stone-500 text-xs mt-1">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-8 mb-8">
-                                    <div className="flex-1 grid grid-cols-2 gap-4 bg-stone-50 p-6 rounded-2xl border border-stone-200">
-                                        <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Cálculo Base</p><p className="font-bold text-lg text-stone-800">{order.referenceLabel}</p></div>
-                                        <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Equivalente a Lotes Padrão</p><p className="font-bold text-lg text-stone-800">{order.targetBatches.toFixed(3)}x Padrão</p></div>
-                                        <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Rendimento Final Alvo</p><p className="font-black text-brand-orange text-xl">{order.finalProductWeightKg.toFixed(3)} kg</p></div>
-                                        <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Massa Bruta Total (Entrada)</p><p className="font-bold text-lg text-stone-800">{order.grossTotal.toFixed(3)} kg</p></div>
-                                    </div>
-                                    {p.image ? (
-                                        <img src={p.image} className="w-40 h-40 object-cover rounded-2xl border border-stone-200 shadow-sm" />
-                                    ) : null}
-                                </div>
-
-                                <h3 className="font-black text-lg mb-3 uppercase tracking-widest border-b-2 border-stone-200 pb-2 text-stone-800">Guia de Separação de Ingredientes</h3>
-                                {order.sections.map((sec, sIdx) => (
-                                    <div key={sIdx} className="mb-6 border border-stone-200 rounded-lg overflow-hidden avoid-break">
-                                        <div className="bg-stone-100 px-4 py-2 flex justify-between items-center border-b border-stone-200">
-                                            <h3 className="font-bold text-stone-800 text-md">{sec.name}</h3>
-                                            <div className="text-xs text-stone-500 font-bold">Subtotal Alvo: <span className="text-stone-800">{sec.finalWeightKg.toFixed(3)} kg</span></div>
-                                        </div>
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="bg-white border-b border-stone-100 text-stone-400 text-[10px] uppercase tracking-widest font-black"><tr><th className="px-4 py-2 w-2/3">Ingrediente</th><th className="px-4 py-2 text-right">Quantidade a Pesar</th></tr></thead>
-                                            <tbody className="divide-y divide-stone-100 bg-white">
-                                                {sec.ingredients.map((ing, i) => (
-                                                    <tr key={i}><td className="px-4 py-2 font-bold text-stone-800">{ing.name} {ing.fixedQty>0&&<span className="text-[9px] text-stone-500 ml-1 uppercase">(Fixo)</span>}</td><td className="px-4 py-2 text-right font-black text-xl text-stone-900">{ing.calcNet.toFixed(3)} <span className="text-xs text-stone-500 font-bold">{ing.unit}</span></td></tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {/* Omit the screen visualization card if order exists because it's printed above, but we show a summary on screen */}
-                        {order && (
-                            <Card className="border-none shadow-2xl overflow-hidden no-print">
+                            <Card className="border-none shadow-2xl overflow-hidden print-shadow-none">
                                 <div className="bg-stone-900 text-white p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                                     <div><span className="text-stone-400 text-[10px] font-bold uppercase tracking-widest block mb-2 flex items-center gap-2"><ClipboardList size={14}/> Ordem de Produção Emitida</span><h2 className="text-3xl font-black">{p.name}</h2><p className="text-sm font-medium text-stone-400 mt-2 bg-stone-800 inline-block px-3 py-1 rounded-lg">Cálculo Base: {order.referenceLabel}</p></div>
                                     <div className="md:text-right w-full md:w-auto bg-stone-800 md:bg-transparent p-4 md:p-0 rounded-xl"><span className="text-stone-400 text-[10px] font-bold uppercase tracking-widest block mb-2">Rendimento Alvo Estimado</span><span className="text-4xl font-black text-emerald-400">{order.finalProductWeightKg.toFixed(3)} <span className="text-xl text-emerald-600">kg</span></span>{p.outputType === 'unit' && p.outputUnitWeight > 0 && (<span className="block text-sm font-bold text-stone-400 mt-2">Equivalente a ~ {Math.floor(order.finalProductWeightKg / toKg(p.outputUnitWeight, p.outputUnitMeasure))} unidades</span>)}</div>
@@ -1378,83 +1627,21 @@
                 );
             };
 
-            const renderMonitoring = () => {
-                const p = catalog.find(x => x.id === monSelectedProduct);
-                let productLogs = []; if (p) { productLogs = logs.filter(l => l.productId === p.id).sort((a,b) => new Date(a.date) - new Date(b.date)); }
-                let filteredHistory = [...logs];
-                if (monLogSearch) { const term = monLogSearch.toLowerCase(); filteredHistory = filteredHistory.filter(l => { const prod = catalog.find(c => c.id === l.productId); const pName = prod ? prod.name.toLowerCase() : ''; const dStr = formatDate(l.date).toLowerCase(); return pName.includes(term) || dStr.includes(term); }); }
-                filteredHistory.sort((a,b) => new Date(b.date) - new Date(a.date));
-
-                const handleAddLog = async () => {
-                    if(!p || !monYieldKg || !monEntryDate || !monBatches) return;
-                    const t = calculateProductData(p);
-                    const targetTotalKg = t.finalYieldKg * Number(monBatches);
-                    const actualKg = Number(monYieldKg);
-                    const yieldPct = targetTotalKg > 0 ? (actualKg / targetTotalKg) * 100 : 0;
-                    const newLog = { id: generateId(), productId: p.id, yieldPct: yieldPct, actualKg: actualKg, batches: Number(monBatches), date: monEntryDate };
-                    if (user) await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'logs', newLog.id), newLog);
-                    setMonYieldKg(''); setMonBatches(1); notify("Registo de qualidade guardado!");
-                };
-
-                return (
-                    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-20">
-                        <NavHeader title="Qualidade & Controlo de Rendimentos" />
-                        <Card className="p-6 md:p-8 border-none shadow-md">
-                            <h2 className="text-xl font-black text-stone-800 mb-6 flex items-center gap-3"><div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><Activity size={24} /></div> Lançamento de Produção Real</h2>
-                            <div className="grid grid-cols-1 md:grid-cols-6 gap-6 items-end">
-                                <div className="md:col-span-2"><label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Produto Fabricado</label><SearchableSelect options={catalog.map(c => ({label: c.name, value: c.id}))} value={monSelectedProduct} onChange={setMonSelectedProduct} placeholder="Pesquisar..." /></div>
-                                <div><label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Data Lote</label><input type="date" value={monEntryDate} onChange={e => setMonEntryDate(e.target.value)} className="w-full p-2.5 border border-stone-300 rounded-xl text-sm font-bold text-stone-800 outline-none focus:border-purple-500 transition-colors" /></div>
-                                <div><label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Lotes Base</label><input type="number" step="any" value={monBatches} onChange={e => setMonBatches(e.target.value)} className="w-full p-2.5 border border-stone-300 rounded-xl text-sm font-bold text-stone-800 text-center outline-none focus:border-purple-500 transition-colors" placeholder="Ex: 1" /></div>
-                                <div className="md:col-span-2"><label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Peso Final Pós Forno/Quebra (kg)</label><div className="flex gap-2"><input type="number" step="0.01" value={monYieldKg} onChange={e => setMonYieldKg(e.target.value)} className="flex-1 p-2.5 border border-stone-300 rounded-xl text-lg font-black text-purple-700 outline-none focus:border-purple-500 transition-colors" placeholder="Ex: 15.5" /><button onClick={handleAddLog} disabled={!p || !monYieldKg || !monBatches} className="bg-purple-600 text-white px-6 py-2.5 rounded-xl hover:bg-purple-700 disabled:opacity-50 transition-all font-bold shadow-md hover:shadow-lg">Registar</button></div></div>
-                            </div>
-                        </Card>
-                        {p && productLogs.length > 0 && (
-                            <Card className="p-8 border-none shadow-md animate-fade-in"><div className="flex justify-between items-center mb-6"><h3 className="font-black text-stone-800 text-lg uppercase tracking-wide">Gráfico de Controlo Estatístico</h3><span className="text-xs font-bold text-stone-500 bg-stone-100 px-3 py-1.5 rounded-lg border border-stone-200">Tolerância Aceitável: ±10%</span></div><ControlChart data={productLogs} targetYield={100} tolerance={10} /></Card>
-                        )}
-                        <Card className="border-none shadow-md overflow-hidden">
-                            <div className="p-6 border-b border-stone-100 bg-white flex flex-col sm:flex-row justify-between items-center gap-4"><h3 className="font-black text-stone-800 flex items-center gap-3 text-lg uppercase tracking-wide"><ClipboardList size={20} className="text-stone-400"/> Histórico de Avaliações</h3><div className="relative w-full sm:w-72"><Search className="absolute left-3 top-3 text-stone-400" size={18} /><input type="text" placeholder="Filtrar registos..." className="w-full pl-10 pr-4 py-2.5 border border-stone-200 rounded-xl text-sm font-medium outline-none focus:border-purple-500 bg-stone-50 transition-colors" value={monLogSearch} onChange={(e) => setMonLogSearch(e.target.value)} /></div></div>
-                            <div className="overflow-x-auto bg-white">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-stone-50 text-stone-400 uppercase font-black text-[10px] tracking-widest border-b border-stone-200"><tr><th className="px-6 py-4">Data</th><th className="px-6 py-4">Produto Analisado</th><th className="px-6 py-4 text-center">Base</th><th className="px-6 py-4 text-right">Peso Real</th><th className="px-6 py-4 text-right">Desempenho</th><th className="px-6 py-4 text-center">Status</th><th className="px-6 py-4 text-right">Ações</th></tr></thead>
-                                    <tbody className="divide-y divide-stone-100">
-                                        {filteredHistory.map(log => {
-                                            const prod = catalog.find(c => c.id === log.productId); const pName = prod ? prod.name : 'Produto Excluído'; const diff = log.yieldPct - 100;
-                                            return (
-                                                <tr key={log.id} className="hover:bg-stone-50 transition-colors">
-                                                    <td className="px-6 py-4 font-bold text-stone-600 whitespace-nowrap">{formatDate(log.date)}</td>
-                                                    <td className="px-6 py-4 font-bold text-stone-900">{pName}</td>
-                                                    <td className="px-6 py-4 text-center text-stone-500 font-medium">{log.batches || 1}x</td>
-                                                    <td className="px-6 py-4 text-right font-black text-stone-800">{log.actualKg ? log.actualKg.toFixed(2) : '-'} <span className="text-xs font-bold text-stone-400">kg</span></td>
-                                                    <td className="px-6 py-4 text-right font-black text-purple-700">{log.yieldPct.toFixed(1)}%</td>
-                                                    <td className="px-6 py-4 text-center"><span className={`px-3 py-1.5 rounded-lg text-[10px] uppercase font-black tracking-widest ${Math.abs(diff) <= 5 ? 'bg-emerald-100 text-emerald-700' : (diff < -5 ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700')}`}>{Math.abs(diff) <= 5 ? 'Tolerância OK' : (diff < -5 ? 'Alerta Quebra' : 'Excedente')}</span></td>
-                                                    <td className="px-6 py-4 text-right"><button onClick={async () => { if(confirm("Excluir registo de qualidade?")) { if (user) await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'logs', log.id)); } }} className="text-stone-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"><Trash2 size={18} /></button></td>
-                                                </tr>
-                                            );
-                                        })}
-                                        {filteredHistory.length === 0 && <tr><td colSpan="7" className="px-6 py-12 text-center text-stone-400 font-medium">Nenhum registo de qualidade encontrado no sistema.</td></tr>}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </Card>
-                    </div>
-                );
-            };
-
             const renderSettingsView = () => {
                 const handleExport = () => { const data = JSON.stringify({ catalog, ingredients, settings, logs }); const blob = new Blob([data], {type: "application/json"}); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.download = `backup_gestao_${new Date().toISOString().slice(0,10)}.json`; link.href = url; link.click(); };
                 const handleImport = (e) => { const file = e.target.files[0]; if(!file) return; const reader = new FileReader(); reader.onload = async (evt) => { try { const d = JSON.parse(evt.target.result); if(d.catalog || d.ingredients || d.settings || d.logs) { if (user) { const batch = writeBatch(db); if (d.catalog) d.catalog.forEach(p => batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'catalog', p.id), p)); if (d.ingredients) d.ingredients.forEach(i => batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', i.id), i)); if (d.logs) d.logs.forEach(l => batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'logs', l.id), l)); if (d.settings) batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'config', 'settings'), d.settings); await batch.commit(); } notify("Sistema restaurado com sucesso do Firebase!"); } } catch(err){ notify("Erro no ficheiro de backup."); } }; reader.readAsText(file); };
                 
-                const addLine = () => { if(setNewLine) { updateSettings({...settings, lines: [...settings.lines, setNewLine]}); setSetNewLine(''); } };
-                const addStage = () => { if(setNewStage) { updateSettings({...settings, stages: [...settings.stages, setNewStage]}); setSetNewStage(''); } };
-                const addMachine = () => { if(setNewMachine.name) { updateSettings({...settings, machines: [...settings.machines, { ...setNewMachine, id: generateId() }]}); setSetNewMachine({name:'', powerWatts:''}); } };
-                const addEmployee = () => { if(setNewEmployee.name) { updateSettings({...settings, employees: [...settings.employees, { ...setNewEmployee, id: generateId() }]}); setSetNewEmployee({name:'', salary:'', hoursMonth:220}); } };
-                const addDefaultIndirect = () => { if(setNewIndirect.name && setNewIndirect.cost) { updateSettings({...settings, defaultIndirectCosts: [...(settings.defaultIndirectCosts || []), { ...setNewIndirect, id: generateId(), cost: Number(setNewIndirect.cost) }]}); setSetNewIndirect({name:'', cost:'', type:'%'}); } };
+                const addLine = () => { if(setNewLine) { updateSettings({...settings, lines: [...(settings?.lines || []), setNewLine]}); setSetNewLine(''); } };
+                const addStage = () => { if(setNewStage) { updateSettings({...settings, stages: [...(settings?.stages || []), setNewStage]}); setSetNewStage(''); } };
+                const addMachine = () => { if(setNewMachine.name) { updateSettings({...settings, machines: [...(settings?.machines || []), { ...setNewMachine, id: generateId() }]}); setSetNewMachine({name:'', powerWatts:''}); } };
+                const addEmployee = () => { if(setNewEmployee.name) { updateSettings({...settings, employees: [...(settings?.employees || []), { ...setNewEmployee, id: generateId() }]}); setSetNewEmployee({name:'', salary:'', hoursMonth:220}); } };
+                const addDefaultIndirect = () => { if(setNewIndirect.name && setNewIndirect.cost) { updateSettings({...settings, defaultIndirectCosts: [...(settings?.defaultIndirectCosts || []), { ...setNewIndirect, id: generateId(), cost: Number(setNewIndirect.cost) }]}); setSetNewIndirect({name:'', cost:'', type:'%'}); } };
 
-                const removeLine = (l) => updateSettings({...settings, lines: settings.lines.filter(x => x !== l)});
-                const removeStage = (s) => updateSettings({...settings, stages: settings.stages.filter(x => x !== s)});
-                const removeMachine = (id) => updateSettings({...settings, machines: settings.machines.filter(x => x.id !== id)});
-                const removeEmployee = (id) => updateSettings({...settings, employees: settings.employees.filter(x => x.id !== id)});
-                const removeDefaultIndirect = (id) => updateSettings({...settings, defaultIndirectCosts: (settings.defaultIndirectCosts || []).filter(x => x.id !== id)});
+                const removeLine = (l) => updateSettings({...settings, lines: (settings?.lines || []).filter(x => x !== l)});
+                const removeStage = (s) => updateSettings({...settings, stages: (settings?.stages || []).filter(x => x !== s)});
+                const removeMachine = (id) => updateSettings({...settings, machines: (settings?.machines || []).filter(x => x.id !== id)});
+                const removeEmployee = (id) => updateSettings({...settings, employees: (settings?.employees || []).filter(x => x.id !== id)});
+                const removeDefaultIndirect = (id) => updateSettings({...settings, defaultIndirectCosts: (settings?.defaultIndirectCosts || []).filter(x => x.id !== id)});
 
                 return (
                     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-20">
@@ -1462,37 +1649,52 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <Card className="p-6 md:col-span-2 flex flex-col md:flex-row items-center justify-between bg-stone-900 border-none shadow-md gap-4 text-white">
                                 <div><h3 className="font-bold text-lg flex items-center gap-2 mb-1"><Archive className="text-stone-400"/> Backup Integrado</h3><p className="text-sm text-stone-400 font-medium">Faça o download ou restaure toda a base de dados num único ficheiro JSON seguro.</p></div>
-                                <div className="flex gap-3 w-full md:w-auto"><div className="relative flex-1 md:flex-none"><input type="file" accept=".json" onChange={handleImport} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/><Button variant="secondary" className="w-full bg-white/10 text-white border-white/20 hover:bg-white/20"><Upload size={16}/> Restaurar</Button></div><Button onClick={handleExport} className="bg-brand-orange text-white flex-1 md:flex-none hover:bg-orange-600 border-none"><Download size={16}/> Exportar DB</Button></div>
+                                <div className="flex gap-3 w-full md:w-auto">
+                                    <div className="relative flex-1 md:flex-none">
+                                        <input type="file" accept=".json" onChange={handleImport} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
+                                        <Button variant="secondary" className="w-full bg-white/10 text-white border-white/20 hover:bg-white/20 relative z-0"><Upload size={16}/> Restaurar</Button>
+                                    </div>
+                                    <Button onClick={handleExport} className="bg-brand-orange text-white flex-1 md:flex-none hover:bg-orange-600 border-none"><Download size={16}/> Exportar DB</Button>
+                                </div>
                             </Card>
 
                             <Card className="p-6 border-none shadow-sm">
                                 <h3 className="font-black text-stone-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><ImageIcon size={16} className="text-stone-400"/> Logótipo da Empresa</h3>
                                 <div className="flex gap-5 items-center">
-                                    <div className="w-24 h-24 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-200 flex items-center justify-center overflow-hidden relative group transition-colors hover:border-brand-orange hover:bg-orange-50 cursor-pointer">
+                                    <div className="w-24 h-24 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-200 flex items-center justify-center overflow-hidden relative group transition-colors hover:border-brand-orange hover:bg-orange-50 cursor-pointer z-0">
                                         <input type="file" accept="image/*" onChange={async (e) => { 
                                             const f = e.target.files[0]; 
                                             if(f){ 
                                                 try {
-                                                    const base64 = await compressImage(f, 400); // Comprime a logo para não sobrecarregar o DB
+                                                    const base64 = await compressImage(f, 400);
                                                     updateSettings({...settings, logo: base64});
                                                 } catch(err) {
                                                     notify("Erro ao processar o logótipo.");
                                                 }
                                             } 
-                                        }} className="absolute inset-0 opacity-0 cursor-pointer z-10"/>
-                                        {settings.logo ? <><img src={settings.logo} className="w-full h-full object-contain p-2"/><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><button onClick={()=>updateSettings({...settings, logo: null})} className="text-white bg-red-500 p-2 rounded-full relative z-20 hover:bg-red-600 transition-colors shadow-lg"><Trash2 size={16}/></button></div></> : <ImageIcon className="text-stone-300"/>}
+                                        }} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/>
+                                        {settings?.logo ? (
+                                            <>
+                                                <img src={settings.logo} className="w-full h-full object-contain p-2 relative z-0"/>
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
+                                                    <button onClick={(e)=>{e.preventDefault(); e.stopPropagation(); updateSettings({...settings, logo: null});}} className="text-white bg-red-500 p-2 rounded-full relative z-20 hover:bg-red-600 transition-colors shadow-lg"><Trash2 size={16}/></button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <ImageIcon className="text-stone-300 relative z-0"/>
+                                        )}
                                     </div>
                                     <p className="text-xs text-stone-500 font-medium">Aparece no cabeçalho e nas impressões PDF.</p>
                                 </div>
                             </Card>
                             <Card className="p-6 border-none shadow-sm">
                                 <h3 className="font-black text-stone-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><Zap size={16} className="text-yellow-500"/> Tarifa de Energia</h3>
-                                <div><label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-2">Preço KWh Referência (R$)</label><input type="number" step="0.01" value={settings.kwhPrice} onChange={e=>updateSettings({...settings, kwhPrice: Number(e.target.value)})} className="w-full p-3 border border-stone-200 rounded-xl font-black text-stone-800 outline-none focus:border-yellow-500 bg-stone-50 transition-colors" /></div>
+                                <div><label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-2">Preço KWh Referência (R$)</label><input type="number" step="0.01" value={settings?.kwhPrice || 0} onChange={e=>updateSettings({...settings, kwhPrice: Number(e.target.value)})} className="w-full p-3 border border-stone-200 rounded-xl font-black text-stone-800 outline-none focus:border-yellow-500 bg-stone-50 transition-colors" /></div>
                             </Card>
 
                             <Card className="p-6 md:col-span-2 border-none shadow-sm">
                                 <h3 className="font-black text-stone-800 text-lg mb-2 flex items-center gap-2 uppercase tracking-widest text-[11px]"><Coins size={16} className="text-brand-orange"/> Taxas e Indiretos (Padrão Global)</h3>
-                                <p className="text-xs text-stone-500 font-medium mb-6">Estas parcelas serão adicionadas automaticamente à aba de Custos de <strong>todas as novas Fichas Técnicas</strong> (podendo ser editadas individualmente lá).</p>
+                                <p className="text-xs text-stone-500 font-medium mb-6">Estas parcelas serão adicionadas automaticamente à aba de Custos de <strong>todas as novas Fichas Técnicas</strong>.</p>
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-stone-50 p-5 rounded-2xl border border-stone-200 border-dashed">
                                     <input className="md:col-span-2 border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" placeholder="Ex: Taxa TPA, Embalagem Genérica" value={setNewIndirect.name} onChange={e=>setSetNewIndirect({...setNewIndirect, name: e.target.value})} />
                                     <div className="flex items-center bg-white rounded-xl border border-stone-200 overflow-hidden focus-within:border-brand-orange transition-colors">
@@ -1505,7 +1707,7 @@
                                     <Button onClick={addDefaultIndirect} className="bg-stone-900 text-white rounded-xl">Registar Padrão</Button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {(settings.defaultIndirectCosts || []).map(ind => (
+                                    {(settings?.defaultIndirectCosts || []).map(ind => (
                                         <div key={ind.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm hover:border-brand-orange transition-colors group">
                                             <div>
                                                 <div className="font-bold text-sm text-stone-800 mb-0.5">{ind.name}</div>
@@ -1520,12 +1722,12 @@
                             <Card className="p-6 border-none shadow-sm">
                                 <h3 className="font-black text-stone-800 mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]">Categorias de Produto</h3>
                                 <div className="flex gap-2 mb-6"><input value={setNewLine} onChange={e=>setSetNewLine(e.target.value)} placeholder="Ex: Padaria Fria" className="flex-1 p-3 border border-stone-200 bg-stone-50 rounded-xl text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" /><Button onClick={addLine} className="bg-stone-900 text-white px-4 rounded-xl"><Plus size={18}/></Button></div>
-                                <ul className="space-y-2">{(settings.lines || []).map(l => <li key={l} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{l}<button onClick={()=>removeLine(l)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
+                                <ul className="space-y-2">{(settings?.lines || []).map(l => <li key={l} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{l}<button onClick={()=>removeLine(l)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
                             </Card>
                             <Card className="p-6 border-none shadow-sm">
                                 <h3 className="font-black text-stone-800 mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]">Etapas de Processo</h3>
                                 <div className="flex gap-2 mb-6"><input value={setNewStage} onChange={e=>setSetNewStage(e.target.value)} placeholder="Ex: Forneamento" className="flex-1 p-3 border border-stone-200 bg-stone-50 rounded-xl text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" /><Button onClick={addStage} className="bg-stone-900 text-white px-4 rounded-xl"><Plus size={18}/></Button></div>
-                                <ul className="space-y-2">{(settings.stages || []).map(s => <li key={s} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{s}<button onClick={()=>removeStage(s)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
+                                <ul className="space-y-2">{(settings?.stages || []).map(s => <li key={s} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{s}<button onClick={()=>removeStage(s)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
                             </Card>
 
                             <Card className="p-6 md:col-span-2 border-none shadow-sm">
@@ -1536,7 +1738,7 @@
                                     <div className="md:col-span-2 flex gap-3"><input type="number" className="w-full border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-bold text-stone-800 text-center outline-none focus:border-brand-orange transition-colors" placeholder="Carga (Hrs/mês)" value={setNewEmployee.hoursMonth} onChange={e=>setSetNewEmployee({...setNewEmployee, hoursMonth: Number(e.target.value)})} /><Button onClick={addEmployee} className="bg-stone-900 text-white rounded-xl w-full">Registar</Button></div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {(settings.employees || []).map(e => <div key={e.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{e.name}</div><div className="text-xs font-bold text-stone-400 tracking-wider">R$ {e.salary} <span className="font-medium text-stone-300">|</span> {e.hoursMonth}h/mês</div></div><button onClick={()=>removeEmployee(e.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
+                                    {(settings?.employees || []).map(e => <div key={e.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{e.name}</div><div className="text-xs font-bold text-stone-400 tracking-wider">R$ {e.salary} <span className="font-medium text-stone-300">|</span> {e.hoursMonth}h/mês</div></div><button onClick={()=>removeEmployee(e.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
                                 </div>
                             </Card>
 
@@ -1548,7 +1750,7 @@
                                     <Button onClick={addMachine} className="bg-stone-900 text-white rounded-xl w-full">Registar Eq.</Button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {(settings.machines || []).map(m => <div key={m.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{m.name}</div><div className="text-xs font-black text-brand-orange tracking-wider">{m.powerWatts} <span className="font-medium text-stone-400">Watts</span></div></div><button onClick={()=>removeMachine(m.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
+                                    {(settings?.machines || []).map(m => <div key={m.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{m.name}</div><div className="text-xs font-black text-brand-orange tracking-wider">{m.powerWatts} <span className="font-medium text-stone-400">Watts</span></div></div><button onClick={()=>removeMachine(m.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
                                 </div>
                             </Card>
                         </div>
@@ -1596,7 +1798,7 @@
                         <aside id="sidebar-root" className={`relative flex w-[280px] max-w-[85vw] flex-col bg-stone-950 transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-2xl ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                             <div className="flex items-center justify-between px-6 py-6 border-b border-white/5">
                                 <div className="flex items-center gap-3">
-                                    {settings.logo ? <img src={settings.logo} className="h-10 w-auto rounded-lg bg-white p-1" /> : <div className="p-2.5 bg-brand-orange rounded-xl text-white shadow-lg shadow-orange-500/20"><ChefHat size={22}/></div>}
+                                    {settings?.logo ? <img src={settings.logo} className="h-10 w-auto rounded-lg bg-white p-1" /> : <div className="p-2.5 bg-brand-orange rounded-xl text-white shadow-lg shadow-orange-500/20"><ChefHat size={22}/></div>}
                                     <span className="text-lg font-black text-white tracking-wide leading-tight">Fichas Técnicas<br/><span className="text-xs text-stone-400 font-bold tracking-widest uppercase">Custos</span></span>
                                 </div>
                                 <button onClick={() => setIsMobileMenuOpen(false)} className="text-stone-400 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><X size={20} /></button>
@@ -1636,7 +1838,7 @@
 
                         <div className={`flex items-center ${isSidebarExpanded ? 'gap-4 px-8' : 'justify-center px-0'} py-8 border-b border-white/5 relative overflow-hidden h-[100px] flex-shrink-0 transition-all`}>
                             <div className="absolute -right-12 -top-12 w-32 h-32 bg-brand-orange/10 rounded-full blur-3xl"></div>
-                            {settings.logo ? (
+                            {settings?.logo ? (
                                 <img src={settings.logo} className={`w-auto rounded-xl bg-white p-1.5 shadow-lg relative z-10 flex-shrink-0 transition-all ${isSidebarExpanded ? 'h-12' : 'h-8'}`} title={!isSidebarExpanded ? "Fichas Técnicas" : ""} />
                             ) : (
                                 <div className={`bg-brand-orange rounded-2xl text-white shadow-xl shadow-orange-500/20 relative z-10 flex-shrink-0 flex items-center justify-center transition-all ${isSidebarExpanded ? 'p-3 w-12 h-12' : 'p-2 w-10 h-10'}`} title={!isSidebarExpanded ? "Fichas Técnicas" : ""}>
@@ -1687,7 +1889,7 @@
                     <div id="main-content" className="flex-1 flex flex-col min-w-0 bg-[#f5f5f4] relative h-full">
                         <div className="md:hidden flex items-center justify-between bg-white text-stone-900 px-6 py-4 border-b border-stone-200 shadow-sm z-30 no-print sticky top-0">
                             <div className="flex items-center gap-3">
-                                {settings.logo ? <img src={settings.logo} className="h-9 w-auto rounded-lg" /> : <div className="p-2 bg-brand-orange rounded-xl text-white shadow-md shadow-orange-500/20"><ChefHat size={18} strokeWidth={2.5}/></div>}
+                                {settings?.logo ? <img src={settings.logo} className="h-9 w-auto rounded-lg" /> : <div className="p-2 bg-brand-orange rounded-xl text-white shadow-md shadow-orange-500/20"><ChefHat size={18} strokeWidth={2.5}/></div>}
                                 <span className="font-black text-stone-900 tracking-wide text-lg">Fichas Técnicas</span>
                             </div>
                             <button onClick={() => setIsMobileMenuOpen(true)} className="p-2.5 text-stone-600 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors"><Menu size={20} strokeWidth={2.5} /></button>
