@@ -3,23 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fichas Técnicas/Custos</title>
+    <title>Fichas Técnicas e Custos - IMAC</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
 
-    <!-- Configurações do Tailwind -->
+    <!-- Phosphor Icons (Substituindo Lucide para manter o padrão) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Configurações do Tailwind (Padrão IMAC) -->
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        brand: {
-                            orange: '#f97316',
-                            amber: '#FDB913',
-                            light: '#fdfbf7'
-                        }
+                        'imac-yellow': '#dca900', // Amarelo da barra superior/destaques
+                        'imac-blue': '#104ea2',   // Azul da logo
+                        'imac-text': '#111827',   // Cinza muito escuro para títulos pesados
+                        'imac-subtext': '#6b7280', // Cinza para textos secundários
+                        'imac-bg': '#f8fafc',     // Fundo cinza bem claro
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
                     },
                     keyframes: {
                         fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
@@ -34,13 +40,12 @@
         }
     </script>
 
-    <!-- Import Map para React, Lucide Icons e Firebase -->
+    <!-- Import Map para React e Firebase (Sem Lucide) -->
     <script type="importmap">
     {
         "imports": {
             "react": "https://esm.sh/react@18.2.0",
             "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-            "lucide-react": "https://esm.sh/lucide-react@0.292.0",
             "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
             "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
             "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"
@@ -59,14 +64,16 @@
 
         body { 
             font-family: 'Inter', sans-serif; 
-            background-color: #f5f5f4; 
+            background-color: #f8fafc; 
             -webkit-tap-highlight-color: transparent;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
         
         .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #d6d3d1; border-radius: 10px; }
-        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #a8a29e; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
         @media print {
             @page { margin: 0.5cm; size: A4; }
@@ -76,30 +83,16 @@
             .page-break { break-after: page; page-break-after: always; }
             .avoid-break { break-inside: avoid; page-break-inside: avoid; }
             .print-shadow-none { box-shadow: none !important; border-color: #e5e7eb !important; }
-            #sidebar-root { display: none !important; }
-            #main-content { margin-left: 0 !important; width: 100% !important; overflow: visible !important; height: auto !important; background-color: white !important; padding: 0 !important; }
         }
-        
-        /* Tabs transition */
-        .tab-content { display: none; }
-        .tab-content.active { display: block; animation: fadeIn 0.3s ease-in-out; }
     </style>
 </head>
-<body class="text-stone-900 h-screen overflow-hidden">
+<body class="text-gray-800 h-screen overflow-hidden bg-imac-bg">
 
     <div id="root" class="h-full"></div>
 
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useMemo, useRef } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { 
-            Plus, Trash2, Save, Calculator, ChevronLeft, ChevronRight, Printer, 
-            Package, Clock, Zap, Settings, Edit2, X, AlertTriangle, 
-            Users, TrendingUp, DollarSign, Archive, Image as ImageIcon, 
-            Coins, Search, Link as LinkIcon, Unlink, Database, 
-            Activity, ClipboardList, ChefHat, Info, ArrowRight, 
-            CheckCircle, LayoutDashboard, Book, ListChecks, Shapes, FileOutput, Menu, LogOut, Loader2, FileSpreadsheet, Upload
-        } from 'lucide-react';
         import { initializeApp } from "firebase/app";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
         import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, deleteDoc, writeBatch } from "firebase/firestore";
@@ -147,7 +140,6 @@
             return n.includes('embalagem') || n.includes('etiqueta') || n.includes('bobina') || n.includes('saco') || n.includes('fita') || n.includes('caixa') || n.includes('papel');
         };
 
-        // --- Compressor de Imagens Otimizado ---
         const compressImage = (file, maxWidth = 800) => {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -167,7 +159,7 @@
                         canvas.height = height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.7)); // Comprime para JPEG 70%
+                        resolve(canvas.toDataURL('image/jpeg', 0.7)); 
                     };
                 };
                 reader.onerror = error => reject(error);
@@ -176,20 +168,20 @@
 
         // --- Componentes UI Base Independentes ---
         const Card = ({ children, className = "", onClick }) => (
-            <div onClick={onClick} className={`bg-white rounded-xl shadow-sm border border-stone-200 ${className}`}>
+            <div onClick={onClick} className={`bg-white rounded-xl shadow-sm border border-gray-200 ${className}`}>
                 {children}
             </div>
         );
 
         const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, ...props }) => {
-            const baseStyle = "px-4 py-2.5 rounded-xl font-medium transition-all active:scale-95 flex items-center gap-2 justify-center text-sm relative overflow-hidden";
+            const baseStyle = "px-4 py-2.5 rounded-xl font-bold transition-all active:scale-95 flex items-center gap-2 justify-center text-sm relative overflow-hidden";
             const variants = {
-                primary: "bg-stone-900 text-white hover:bg-stone-800 disabled:opacity-50 shadow-sm",
-                secondary: "bg-white text-stone-700 hover:bg-stone-50 border border-stone-200 disabled:bg-stone-50 disabled:text-stone-400 shadow-sm",
+                primary: "bg-imac-text text-white hover:bg-gray-800 disabled:opacity-50 shadow-sm",
+                secondary: "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 disabled:bg-gray-50 disabled:text-gray-400 shadow-sm",
                 danger: "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100",
                 success: "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm",
-                outline: "border border-stone-300 text-stone-700 hover:bg-stone-50",
-                brand: "bg-brand-orange text-white hover:opacity-90 shadow-sm"
+                outline: "border border-gray-300 text-gray-700 hover:bg-gray-50",
+                brand: "bg-imac-yellow text-white hover:opacity-90 shadow-sm"
             };
             return (
                 <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className} ${disabled ? 'cursor-not-allowed opacity-70' : ''}`} {...props}>
@@ -229,16 +221,16 @@
             return (
                 <div className="relative w-full" ref={wrapperRef}>
                     <div className="relative">
-                        <input type="text" className={`w-full p-2.5 border ${isOpen ? 'border-brand-orange ring-1 ring-orange-500' : 'border-stone-300'} rounded-lg outline-none text-sm bg-white disabled:bg-stone-100 disabled:text-stone-400`} placeholder={placeholder} value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setIsOpen(true); if(e.target.value === '') onChange(''); }} onClick={() => !disabled && setIsOpen(true)} disabled={disabled} />
-                        <div className="absolute right-2 top-3 text-stone-400 pointer-events-none"><ChevronLeft className="transform -rotate-90" size={16} /></div>
+                        <input type="text" className={`w-full p-3 border ${isOpen ? 'border-imac-yellow ring-1 ring-yellow-400' : 'border-gray-300'} rounded-xl outline-none text-sm font-bold bg-white disabled:bg-gray-100 disabled:text-gray-400`} placeholder={placeholder} value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setIsOpen(true); if(e.target.value === '') onChange(''); }} onClick={() => !disabled && setIsOpen(true)} disabled={disabled} />
+                        <div className="absolute right-3 top-3.5 text-gray-400 pointer-events-none"><i className="ph ph-caret-down"></i></div>
                     </div>
                     {isOpen && !disabled && (
-                        <ul className="absolute z-50 w-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg max-h-60 overflow-auto custom-scroll" style={{ zIndex: 9999 }}>
+                        <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto custom-scroll" style={{ zIndex: 9999 }}>
                             {filteredOptions.length > 0 ? filteredOptions.map((opt, idx) => {
                                 const val = typeof opt === 'object' ? opt[valueKey] : opt;
                                 const label = typeof opt === 'object' ? opt[labelKey] : opt;
-                                return <li key={idx} onClick={() => { onChange(val); setSearchTerm(String(label)); setIsOpen(false); }} className={`p-3 text-sm cursor-pointer hover:bg-stone-50 break-words ${val === value ? 'bg-orange-50 text-brand-orange font-medium' : 'text-stone-700'}`}>{String(label)}</li>;
-                            }) : <li className="p-3 text-sm text-stone-400 italic">Nenhuma opção encontrada</li>}
+                                return <li key={idx} onClick={() => { onChange(val); setSearchTerm(String(label)); setIsOpen(false); }} className={`p-3 text-sm cursor-pointer hover:bg-gray-50 break-words ${val === value ? 'bg-yellow-50 text-imac-yellow font-bold' : 'text-gray-700 font-medium'}`}>{String(label)}</li>;
+                            }) : <li className="p-3 text-sm text-gray-400 italic">Nenhuma opção encontrada</li>}
                         </ul>
                     )}
                 </div>
@@ -249,9 +241,9 @@
             if (!isOpen) return null;
             return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full mx-4 border border-stone-100">
-                        <div className="flex items-center gap-3 text-red-600 mb-4 bg-red-50 p-3 rounded-lg w-fit"><AlertTriangle size={24} /></div>
-                        <h3 className="text-lg font-bold text-stone-900 mb-2">{title}</h3><p className="text-stone-600 mb-6 text-sm">{message}</p>
+                    <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 border border-gray-100">
+                        <div className="flex items-center gap-3 text-red-600 mb-4 bg-red-50 p-3 rounded-xl w-fit"><i className="ph ph-warning text-2xl"></i></div>
+                        <h3 className="text-lg font-black text-imac-text mb-2">{title}</h3><p className="text-gray-600 mb-6 text-sm">{message}</p>
                         <div className="flex justify-end gap-3"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button variant="danger" onClick={onConfirm}>Confirmar</Button></div>
                     </div>
                 </div>
@@ -446,36 +438,36 @@
 
             return (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
-                        <div className="px-6 py-4 border-b flex justify-between items-center bg-stone-50">
-                            <h3 className="font-bold text-lg flex items-center gap-2 text-stone-800"><FileSpreadsheet className="text-brand-orange"/> Importação de Planilhas</h3>
-                            <button onClick={onClose} disabled={loading} className="text-stone-400 hover:text-stone-600"><X/></button>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] border border-gray-100">
+                        <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
+                            <h3 className="font-black text-lg flex items-center gap-2 text-imac-text"><i className="ph ph-file-xls text-imac-yellow text-xl"></i> Importação de Planilhas</h3>
+                            <button onClick={onClose} disabled={loading} className="text-gray-400 hover:text-gray-600 transition-colors"><i className="ph ph-x text-xl"></i></button>
                         </div>
                         <div className="p-6 overflow-y-auto custom-scroll">
-                            <p className="text-sm text-stone-500 mb-4">Selecione <strong>uma ou várias Planilhas (Excel/CSV)</strong>. O sistema vai extrair as receitas em lote, alimentar o seu catálogo e criar os itens no estoque instantaneamente!</p>
+                            <p className="text-sm text-gray-500 mb-4 font-medium">Selecione <strong>uma ou várias Planilhas (Excel/CSV)</strong>. O sistema vai extrair as receitas em lote, alimentar o seu catálogo e criar os itens no estoque instantaneamente!</p>
                             
                             {!fileType ? (
                                 <div className="relative">
                                     <input type="file" accept=".xlsx, .xls, .csv" multiple className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" onChange={handleFile} />
-                                    <div className="border-2 border-dashed border-stone-300 rounded-xl p-8 flex flex-col items-center justify-center text-stone-400 hover:bg-stone-50 hover:border-brand-orange transition-colors relative z-10 text-center">
-                                        <Upload size={32} className="mb-2 text-brand-orange" />
-                                        <span className="font-bold text-stone-700">Clique para enviar Ficheiro(s)</span>
-                                        <span className="text-xs text-stone-400 mt-1">Suporta: Múltiplos Excels (.xlsx), CSV</span>
+                                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 hover:border-imac-yellow transition-colors relative z-10 text-center">
+                                        <i className="ph ph-upload-simple text-3xl mb-2 text-imac-yellow"></i>
+                                        <span className="font-bold text-gray-700">Clique para enviar Ficheiro(s)</span>
+                                        <span className="text-xs text-gray-400 mt-1 font-medium">Suporta: Múltiplos Excels (.xlsx), CSV</span>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="relative rounded-xl p-6 border border-stone-200 bg-stone-50 flex flex-col items-center text-center">
-                                    <FileSpreadsheet size={48} className="text-green-600 mb-3"/>
-                                    <p className="font-bold text-stone-800">{stats}</p>
+                                <div className="relative rounded-xl p-6 border border-gray-200 bg-gray-50 flex flex-col items-center text-center">
+                                    <i className="ph ph-file-xls text-5xl text-green-600 mb-3"></i>
+                                    <p className="font-bold text-gray-800">{stats}</p>
                                     {!loading && <button onClick={() => setFileType(null)} className="mt-4 text-xs font-bold text-red-500 hover:underline">Cancelar e escolher outro ficheiro</button>}
                                 </div>
                             )}
 
-                            {error && <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">{error}</div>}
+                            {error && <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm font-bold rounded-lg border border-red-100">{error}</div>}
                         </div>
-                        <div className="p-4 border-t bg-stone-50">
-                            <Button onClick={processData} disabled={!fileType || loading} variant="primary" className="w-full h-12 text-lg bg-brand-orange hover:bg-orange-600">
-                                {loading ? <><Loader2 className="animate-spin" size={20}/> Extraindo Dados...</> : 'Processar e Importar Produtos'}
+                        <div className="p-4 border-t bg-gray-50">
+                            <Button onClick={processData} disabled={!fileType || loading} variant="brand" className="w-full h-12 text-base">
+                                {loading ? <><i className="ph ph-spinner animate-spin text-xl"></i> Extraindo Dados...</> : 'Processar e Importar Produtos'}
                             </Button>
                         </div>
                     </div>
@@ -483,50 +475,13 @@
             );
         };
 
-        const ControlChart = ({ data, targetYield, tolerance }) => {
-            const safeTolerance = tolerance !== undefined ? tolerance : 10;
-            if (!data || data.length < 2) return <div className="h-48 flex items-center justify-center text-stone-400 text-sm bg-stone-50 rounded-lg border border-dashed">Dados insuficientes (mínimo 2 registos)</div>;
-            const values = data.map(d => d.yieldPct);
-            const mean = targetYield || 100;
-            const upperLimit = mean * (1 + safeTolerance / 100);
-            const lowerLimit = mean * (1 - safeTolerance / 100);
-            const height = 220, width = 600, padding = 50;
-            const maxVal = Math.max(...values, upperLimit) * 1.05;
-            const minVal = Math.min(...values, lowerLimit) * 0.95;
-            const range = (maxVal - minVal) || 1;
-            const getY = (val) => height - padding - ((val - minVal) / range) * (height - (padding * 2));
-            const getX = (idx) => padding + (idx / (Math.max(values.length - 1, 1))) * (width - (padding * 2));
-            const points = values.map((val, idx) => `${getX(idx)},${getY(val)}`).join(' ');
-
-            return (
-                <div className="w-full overflow-x-auto">
-                    <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} className="bg-white rounded-lg shadow-sm border border-stone-200 min-w-[600px]">
-                        <rect x={padding} y={padding} width={width - padding * 2} height={height - padding * 2} fill="#fdfbf7" />
-                        <line x1={padding} y1={getY(mean)} x2={width - padding} y2={getY(mean)} stroke="#f97316" strokeWidth="2" strokeDasharray="4" />
-                        <text x={width - padding + 5} y={getY(mean) + 3} className="text-[10px] fill-emerald-600 font-bold">Padrão: {mean.toFixed(1)}%</text>
-                        <line x1={padding} y1={getY(upperLimit)} x2={width - padding} y2={getY(upperLimit)} stroke="#ef4444" strokeWidth="1" strokeDasharray="2" />
-                        <text x={width - padding + 5} y={getY(upperLimit) + 3} className="text-[10px] fill-red-500">LCS</text>
-                        <line x1={padding} y1={getY(lowerLimit)} x2={width - padding} y2={getY(lowerLimit)} stroke="#ef4444" strokeWidth="1" strokeDasharray="2" />
-                        <text x={width - padding + 5} y={getY(lowerLimit) + 3} className="text-[10px] fill-red-500">LCI</text>
-                        <polyline points={points} fill="none" stroke="#6b7280" strokeWidth="2" />
-                        {values.map((val, idx) => (
-                            <g key={idx}>
-                                <circle cx={getX(idx)} cy={getY(val)} r="4" fill={val > upperLimit || val < lowerLimit ? "#ef4444" : "#6b7280"} stroke="white" strokeWidth="2"><title>{formatDate(data[idx].date)}: {val.toFixed(2)}%</title></circle>
-                                { (data.length <= 10 || idx % Math.ceil(data.length/10) === 0) && <text x={getX(idx)} y={height - 15} textAnchor="middle" className="text-[9px] fill-stone-500 font-medium" fontSize="9">{formatDate(data[idx].date).slice(0,5)}</text> }
-                            </g>
-                        ))}
-                    </svg>
-                </div>
-            );
-        };
-
         const NavHeader = ({ title, module, onBack }) => (
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-stone-200 no-print">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200 no-print">
                 <div className="flex items-center gap-4">
-                    {onBack && <button onClick={onBack} className="p-2 hover:bg-stone-200 rounded-full transition-colors"><ChevronLeft size={24} className="text-stone-600" /></button>}
+                    {onBack && <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><i className="ph ph-caret-left text-2xl text-gray-600"></i></button>}
                     <div>
-                        <h2 className="text-2xl font-bold text-stone-900 leading-none">{title}</h2>
-                        {module && <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded mt-1 inline-block ${module === 'prod' ? 'bg-orange-100 text-brand-orange' : 'bg-stone-200 text-stone-600'}`}>{module === 'prod' ? 'Módulo Produção' : 'Módulo Custos'}</span>}
+                        <h2 className="text-2xl font-black text-imac-text leading-none tracking-tight">{title}</h2>
+                        {module && <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded mt-1 inline-block ${module === 'prod' ? 'bg-yellow-50 text-imac-yellow' : 'bg-gray-100 text-gray-600'}`}>{module === 'prod' ? 'Módulo Produção' : 'Módulo Custos'}</span>}
                     </div>
                 </div>
             </div>
@@ -555,8 +510,6 @@
         // --- Main App Component ---
         const App = () => {
             const [view, setView] = useState('catalog_list');
-            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-            const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
             const [notification, setNotification] = useState(null);
 
             const [user, setUser] = useState(null);
@@ -567,9 +520,10 @@
             const [ingredients, setIngredients] = useState([]);
             const [logs, setLogs] = useState([]);
             const [editingProduct, setEditingProduct] = useState(null);
+            const [importDataModalOpen, setImportDataModalOpen] = useState(false);
 
             const defaultSettingsObj = { 
-                logo: null, themeColor: '#482823', kwhPrice: 0.95,
+                logo: null, themeColor: '#dca900', kwhPrice: 0.95,
                 lines: ["Padaria", "Confeitaria", "Salgados", "Geral"],
                 stages: ["Massa", "Recheio", "Cobertura", "Montagem", "Outros"],
                 machines: [{ id: 1, name: 'Forno Elétrico Industrial', powerWatts: 5000 }],
@@ -594,12 +548,18 @@
 
             // Firebase Auth
             useEffect(() => {
+                let isMounted = true;
                 const initAuth = async () => {
                     try {
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
+                            try {
+                                await signInWithCustomToken(auth, __initial_auth_token);
+                            } catch (tokenError) {
+                                console.warn("Falha no token customizado, usando login anônimo como fallback:", tokenError);
+                                await signInAnonymously(auth).catch(e => console.warn("Fallback anônimo restrito:", e));
+                            }
                         } else {
-                            await signInAnonymously(auth); 
+                            await signInAnonymously(auth).catch(e => console.warn("Login anônimo restrito:", e)); 
                         }
                     } catch (error) {
                         console.error("Auth error:", error);
@@ -607,10 +567,15 @@
                 };
                 initAuth();
                 const unsubscribe = onAuthStateChanged(auth, (u) => {
-                    setUser(u);
-                    setLoadingAuth(false);
+                    if (isMounted) {
+                        setUser(u);
+                        setLoadingAuth(false);
+                    }
                 });
-                return () => unsubscribe();
+                return () => {
+                    isMounted = false;
+                    unsubscribe();
+                };
             }, []);
 
             const handleGoogleLogin = async () => {
@@ -684,18 +649,11 @@
 
             const [invNewIng, setInvNewIng] = useState({ code: '', name: '', price: '', unit: 'kg' });
             const [invSearch, setInvSearch] = useState('');
-            const invFileInputRef = useRef(null);
 
             const [poSelectedProduct, setPoSelectedProduct] = useState('');
             const [poMode, setPoMode] = useState('batch'); 
             const [poInputValue, setPoInputValue] = useState(1);
             const [poBasisItem, setPoBasisItem] = useState('');
-
-            const [monSelectedProduct, setMonSelectedProduct] = useState('');
-            const [monYieldKg, setMonYieldKg] = useState('');
-            const [monBatches, setMonBatches] = useState(1);
-            const [monEntryDate, setMonEntryDate] = useState(new Date().toISOString().split('T')[0]);
-            const [monLogSearch, setMonLogSearch] = useState('');
 
             const [setNewLine, setSetNewLine] = useState('');
             const [setNewStage, setSetNewStage] = useState('');
@@ -723,6 +681,21 @@
             }, [pLength, settings?.stages]); 
 
             const notify = (msg) => { setNotification(msg); setTimeout(() => setNotification(null), 3000); };
+
+            const handleGuestLogin = async () => {
+                try {
+                    setLoadingAuth(true);
+                    await signInAnonymously(auth);
+                } catch (error) {
+                    console.error("Login convidado error:", error);
+                    if (error.code === 'auth/admin-restricted-operation') {
+                        notify("O login anônimo está desativado no Firebase. Faça login com o Google.");
+                    } else {
+                        notify("Erro ao tentar entrar como convidado.");
+                    }
+                    setLoadingAuth(false);
+                }
+            };
 
             // ==========================================
             // MOTOR DE CÁLCULO UNIFICADO 
@@ -900,15 +873,15 @@
             // ==========================================
 
             const renderLogin = () => (
-                <div className="min-h-screen bg-stone-100 flex flex-col justify-center items-center p-4 font-sans animate-fade-in">
-                    <div className="max-w-md w-full bg-white rounded-[2rem] shadow-2xl p-10 text-center border border-stone-200">
-                        <div className="w-20 h-20 bg-brand-orange rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-lg shadow-orange-500/30">
-                            <ChefHat size={40} className="text-white" strokeWidth={2.5}/>
+                <div className="min-h-screen bg-imac-bg flex flex-col justify-center items-center p-4 font-sans animate-fade-in">
+                    <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-10 border border-gray-100 text-center">
+                        <div className="flex justify-center mb-6">
+                            <img src="CARINHA AMARELO E IMAC AZUL.png" alt="IMAC Logo" className="h-16 w-auto object-contain" onError={(e) => e.target.src='https://placehold.co/120x40/ffffff/104ea2?text=IMAC+Logo'} />
                         </div>
-                        <h1 className="text-3xl font-black text-stone-900 tracking-tight mb-2">Fichas Técnicas/Custos</h1>
-                        <p className="text-stone-500 font-medium mb-10 text-sm px-4">Faça login com a sua conta Google para aceder ao sistema e sincronizar o seu progresso na nuvem.</p>
+                        <h1 className="text-2xl font-black text-imac-text tracking-tight mb-2">Fichas Técnicas / Custos</h1>
+                        <p className="text-gray-500 font-medium mb-10 text-sm px-4">Faça login com a sua conta Google para aceder ao sistema e sincronizar o seu progresso na nuvem.</p>
 
-                        <button onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-4 bg-white border-2 border-stone-200 hover:bg-stone-50 hover:border-stone-300 text-stone-800 font-bold py-4 px-6 rounded-2xl transition-all shadow-sm active:scale-95">
+                        <button onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-4 bg-white border-2 border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-800 font-bold py-4 px-6 rounded-xl transition-all shadow-sm active:scale-95">
                             <svg className="w-6 h-6" viewBox="0 0 24 24">
                                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -917,10 +890,10 @@
                             </svg>
                             Entrar com o Google
                         </button>
-                        <button onClick={() => signInAnonymously(auth)} className="w-full mt-4 text-sm font-bold text-stone-500 hover:text-stone-800 transition-colors">
+                        <button onClick={handleGuestLogin} className="w-full mt-4 text-sm font-bold text-gray-400 hover:text-gray-800 transition-colors">
                             Entrar como Convidado (Local)
                         </button>
-                        <p className="mt-8 text-[10px] text-stone-400 font-bold uppercase tracking-widest">Acesso Seguro • Cloud Firestore</p>
+                        <p className="mt-8 text-[10px] text-gray-400 font-bold uppercase tracking-widest">Acesso Seguro • Cloud Firestore</p>
                     </div>
                 </div>
             );
@@ -929,22 +902,22 @@
                 <div className="max-w-6xl mx-auto space-y-6 animate-fade-in pb-20">
                     <NavHeader title="Visão Geral do Sistema" />
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Card className="p-6 border-l-4 border-brand-orange hover:shadow-md transition-all cursor-pointer hover:-translate-y-1" onClick={() => setView('catalog_list')}>
+                        <Card className="p-6 border-l-4 border-imac-yellow hover:shadow-md transition-all cursor-pointer hover:-translate-y-1 group" onClick={() => setView('catalog_list')}>
                             <div className="flex items-center gap-4">
-                                <div className="p-4 bg-orange-50 text-brand-orange rounded-xl"><Book size={32}/></div>
-                                <div><p className="text-sm text-stone-500 font-bold uppercase tracking-wider">Fichas Técnicas</p><h3 className="text-3xl font-black text-stone-800">{catalog.length}</h3></div>
+                                <div className="p-4 bg-yellow-50 text-imac-yellow rounded-xl group-hover:bg-imac-yellow group-hover:text-white transition-colors"><i className="ph ph-book-open text-3xl"></i></div>
+                                <div><p className="text-sm text-gray-500 font-bold uppercase tracking-wider">Fichas Técnicas</p><h3 className="text-3xl font-black text-gray-800">{catalog.length}</h3></div>
                             </div>
                         </Card>
-                        <Card className="p-6 border-l-4 border-stone-800 hover:shadow-md transition-all cursor-pointer hover:-translate-y-1" onClick={() => setView('inventory')}>
+                        <Card className="p-6 border-l-4 border-gray-800 hover:shadow-md transition-all cursor-pointer hover:-translate-y-1 group" onClick={() => setView('inventory')}>
                             <div className="flex items-center gap-4">
-                                <div className="p-4 bg-stone-100 text-stone-800 rounded-xl"><Database size={32}/></div>
-                                <div><p className="text-sm text-stone-500 font-bold uppercase tracking-wider">Itens no Estoque</p><h3 className="text-3xl font-black text-stone-800">{ingredients.length}</h3></div>
+                                <div className="p-4 bg-gray-100 text-gray-800 rounded-xl group-hover:bg-gray-800 group-hover:text-white transition-colors"><i className="ph ph-database text-3xl"></i></div>
+                                <div><p className="text-sm text-gray-500 font-bold uppercase tracking-wider">Itens no Estoque</p><h3 className="text-3xl font-black text-gray-800">{ingredients.length}</h3></div>
                             </div>
                         </Card>
-                        <Card className="p-6 border-l-4 border-emerald-500 hover:shadow-md transition-all cursor-pointer hover:-translate-y-1" onClick={() => setView('prod_monitoring')}>
+                        <Card className="p-6 border-l-4 border-emerald-500 hover:shadow-md transition-all cursor-pointer hover:-translate-y-1 group" onClick={() => setView('prod_monitoring')}>
                             <div className="flex items-center gap-4">
-                                <div className="p-4 bg-emerald-50 text-emerald-600 rounded-xl"><Activity size={32}/></div>
-                                <div><p className="text-sm text-stone-500 font-bold uppercase tracking-wider">Registos Qualidade</p><h3 className="text-3xl font-black text-stone-800">{logs.length}</h3></div>
+                                <div className="p-4 bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition-colors"><i className="ph ph-activity text-3xl"></i></div>
+                                <div><p className="text-sm text-gray-500 font-bold uppercase tracking-wider">Registos Qualidade</p><h3 className="text-3xl font-black text-gray-800">{logs.length}</h3></div>
                             </div>
                         </Card>
                     </div>
@@ -953,103 +926,106 @@
 
             const renderCatalogList = () => (
                 <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-20">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-stone-200 pb-4">
-                        <h2 className="text-2xl font-bold text-stone-900 leading-tight">Catálogo de Fichas Técnicas</h2>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-gray-200 pb-4">
+                        <h2 className="text-2xl font-black text-imac-text leading-tight">Catálogo de Fichas Técnicas</h2>
                         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                            <Button onClick={() => setImportDataModalOpen(true)} variant="secondary" className="text-sm flex-1 sm:flex-none whitespace-nowrap border-brand-orange text-brand-orange hover:bg-orange-50"><FileSpreadsheet size={16}/> Importar Ficheiros</Button>
+                            <Button onClick={() => setImportDataModalOpen(true)} variant="secondary" className="text-sm flex-1 sm:flex-none whitespace-nowrap border-imac-yellow text-imac-yellow hover:bg-yellow-50"><i className="ph ph-file-xls text-lg"></i> Importar Ficheiros</Button>
                             <Button onClick={() => { 
                                 const defaults = (settings?.defaultIndirectCosts || []).map(d => ({ ...d, id: generateId() }));
                                 setEditingProduct({...INITIAL_PRODUCT, id: generateId(), indirectItems: defaults}); 
                                 setView('catalog_editor'); 
                                 setEditorTab('receita'); 
-                            }} variant="brand" className="text-sm flex-1 sm:flex-none whitespace-nowrap"><Plus size={18}/> Novo Produto</Button>
+                            }} variant="brand" className="text-sm flex-1 sm:flex-none whitespace-nowrap"><i className="ph ph-plus text-lg"></i> Novo Produto</Button>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                         {catalog.map(p => {
                             const t = calculateProductData(p);
                             return (
-                                <Card key={p.id} onClick={() => { setEditingProduct(p); setView('catalog_editor'); setEditorTab('receita'); }} className="p-5 cursor-pointer hover:border-brand-orange transition-all hover:shadow-md border-l-4 border-l-brand-orange group">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <span className="text-[10px] bg-orange-100 text-brand-orange px-2 py-0.5 rounded font-bold uppercase tracking-wider">{p.line}</span>
-                                        {p.image && <div className="w-8 h-8 rounded-md overflow-hidden bg-stone-100"><img src={p.image} className="w-full h-full object-cover"/></div>}
+                                <Card key={p.id} onClick={() => { setEditingProduct(p); setView('catalog_editor'); setEditorTab('receita'); }} className="p-6 cursor-pointer hover:border-imac-yellow hover:shadow-md transition-all group relative overflow-hidden flex flex-col justify-between h-48">
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-imac-yellow opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                    <div>
+                                        <div className="flex justify-between items-start mb-3">
+                                            <span className="text-[10px] bg-yellow-50 text-imac-yellow px-2 py-0.5 rounded font-black uppercase tracking-wider border border-yellow-100">{p.line}</span>
+                                            {p.image && <div className="w-8 h-8 rounded-md overflow-hidden bg-gray-50 border border-gray-100"><img src={p.image} className="w-full h-full object-cover"/></div>}
+                                        </div>
+                                        <h3 className="font-black text-gray-900 text-base uppercase tracking-wide group-hover:text-imac-yellow transition-colors line-clamp-2">{p.name}</h3>
+                                        <div className="text-xs font-bold text-gray-400 mt-1">{t.finalYieldKg.toFixed(2)} Kg / Lote</div>
                                     </div>
-                                    <h3 className="font-bold text-stone-800 mb-1 truncate text-lg group-hover:text-brand-orange transition-colors">{p.name}</h3>
-                                    <div className="text-xs font-medium text-stone-500 mb-4">{t.finalYieldKg.toFixed(2)} Kg / Lote</div>
-                                    <div className="border-t border-stone-100 pt-3 flex justify-between items-end">
-                                        <div><span className="block text-[10px] uppercase text-stone-400 font-bold mb-0.5">Custo / {p.outputType === 'unit' ? 'Un' : 'Kg'}</span><span className="font-bold text-stone-800 text-sm">R$ {formatMoney(t.baseCostForPricing)}</span></div>
-                                        <div className="text-right"><span className="block text-[10px] uppercase text-stone-400 font-bold mb-0.5">Margem</span><span className={`font-bold text-sm ${t.marginPercent >= p.targetMargin ? 'text-emerald-600' : 'text-red-500'}`}>{formatMoney(t.marginPercent)}%</span></div>
+                                    <div className="border-t border-gray-100 pt-3 flex justify-between items-end mt-auto">
+                                        <div><span className="block text-[10px] uppercase text-gray-400 font-bold mb-0.5">Custo / {p.outputType === 'unit' ? 'Un' : 'Kg'}</span><span className="font-black text-gray-800 text-sm">R$ {formatMoney(t.baseCostForPricing)}</span></div>
+                                        <div className="text-right"><span className="block text-[10px] uppercase text-gray-400 font-bold mb-0.5">Margem</span><span className={`font-black text-sm ${t.marginPercent >= p.targetMargin ? 'text-emerald-600' : 'text-red-500'}`}>{formatMoney(t.marginPercent)}%</span></div>
                                     </div>
                                 </Card>
                             )
                         })}
-                        {catalog.length === 0 && <div className="col-span-full text-center py-16 text-stone-400 border-2 border-dashed border-stone-200 rounded-2xl bg-stone-50"><Book size={48} className="mx-auto mb-4 text-stone-300"/>Nenhum produto cadastrado no catálogo.<br/>Clique em "Novo Produto" para começar a sua primeira Ficha Técnica.</div>}
+                        {catalog.length === 0 && <div className="col-span-full text-center py-16 text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50"><i className="ph ph-book-open text-5xl mx-auto mb-4 text-gray-300"></i>Nenhum produto cadastrado no catálogo.<br/>Clique em "Novo Produto" para começar a sua primeira Ficha Técnica.</div>}
                     </div>
                 </div>
             );
 
             const PrintTechSheet = ({ product: p, calc: t, settings }) => (
                 <div className="hidden print:block w-full bg-white text-black p-4 font-sans max-w-4xl mx-auto">
-                    <div className="flex justify-between items-start border-b-4 border-stone-900 pb-6 mb-8">
+                    <div className="flex justify-between items-start border-b-4 border-gray-900 pb-6 mb-8">
                         <div>
-                            {settings?.logo ? <img src={settings.logo} className="h-20 w-auto object-contain" /> : <div className="text-2xl font-black tracking-widest text-stone-300">EMPRESA</div>}
+                            {settings?.logo ? <img src={settings.logo} className="h-20 w-auto object-contain" /> : <div className="text-2xl font-black tracking-widest text-gray-300">EMPRESA</div>}
                         </div>
                         <div className="text-right">
-                            <h1 className="text-3xl font-black uppercase tracking-widest text-stone-900">Ficha Técnica e de Custos</h1>
-                            <p className="text-stone-500 font-bold mt-1 tracking-widest">REF: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVA'}</p>
-                            <p className="text-stone-500 text-xs mt-1">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+                            <h1 className="text-3xl font-black uppercase tracking-widest text-gray-900">Ficha Técnica e de Custos</h1>
+                            <p className="text-gray-500 font-bold mt-1 tracking-widest">REF: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVA'}</p>
+                            <p className="text-gray-500 text-xs mt-1">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
                         </div>
                     </div>
 
                     <div className="flex gap-8 mb-8">
-                        <div className="flex-1 grid grid-cols-2 gap-4 bg-stone-50 p-6 rounded-2xl border border-stone-200">
-                            <div className="col-span-2"><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Produto</p><p className="font-black text-2xl text-stone-900">{p.name}</p></div>
-                            <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Categoria / Linha</p><p className="font-bold text-lg text-stone-800">{p.line}</p></div>
-                            <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Rendimento do Lote</p><p className="font-black text-brand-orange text-xl">{t.finalYieldKg.toFixed(3)} kg</p></div>
-                            <div><p className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">Formato de Venda</p><p className="font-bold text-lg text-stone-800">{p.outputType === 'unit' ? `Unidade (${p.outputUnitWeight}${p.outputUnitMeasure})` : 'Quilo (kg)'}</p></div>
+                        <div className="flex-1 grid grid-cols-2 gap-4 bg-gray-50 p-6 rounded-2xl border border-gray-200">
+                            <div className="col-span-2"><p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Produto</p><p className="font-black text-2xl text-gray-900">{p.name}</p></div>
+                            <div><p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Categoria / Linha</p><p className="font-bold text-lg text-gray-800">{p.line}</p></div>
+                            <div><p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Rendimento do Lote</p><p className="font-black text-imac-yellow text-xl">{t.finalYieldKg.toFixed(3)} kg</p></div>
+                            <div><p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Formato de Venda</p><p className="font-bold text-lg text-gray-800">{p.outputType === 'unit' ? `Unidade (${p.outputUnitWeight}${p.outputUnitMeasure})` : 'Quilo (kg)'}</p></div>
                         </div>
                         {p.image ? (
-                            <img src={p.image} className="w-48 h-48 object-cover rounded-2xl border border-stone-200 shadow-sm" />
+                            <img src={p.image} className="w-48 h-48 object-cover rounded-2xl border border-gray-200 shadow-sm" />
                         ) : (
-                            <div className="w-48 h-48 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-200 flex items-center justify-center text-stone-300 flex-col"><ImageIcon size={40} className="mb-2"/><span className="text-[10px] font-bold uppercase tracking-widest">Sem Imagem</span></div>
+                            <div className="w-48 h-48 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 flex-col"><i className="ph ph-image text-4xl mb-2"></i><span className="text-[10px] font-bold uppercase tracking-widest">Sem Imagem</span></div>
                         )}
                     </div>
 
-                    <h3 className="font-black text-lg mb-3 uppercase tracking-widest border-b-2 border-stone-200 pb-2 text-stone-800">Composição (Matéria-Prima)</h3>
-                    <table className="w-full text-sm text-left mb-10 border border-stone-200 rounded-lg overflow-hidden">
-                        <thead className="bg-stone-100 font-bold uppercase text-[10px] text-stone-500 tracking-widest">
-                            <tr><th className="p-3 border-b border-stone-200">Etapa de Processo</th><th className="p-3 border-b border-stone-200">Descrição do Insumo</th><th className="p-3 border-b border-stone-200 text-center">Quant.</th><th className="p-3 border-b border-stone-200 text-right">Custo Base</th></tr>
+                    <h3 className="font-black text-lg mb-3 uppercase tracking-widest border-b-2 border-gray-200 pb-2 text-gray-800">Composição (Matéria-Prima)</h3>
+                    <table className="w-full text-sm text-left mb-10 border border-gray-200 rounded-lg overflow-hidden">
+                        <thead className="bg-gray-100 font-bold uppercase text-[10px] text-gray-500 tracking-widest">
+                            <tr><th className="p-3 border-b border-gray-200">Etapa de Processo</th><th className="p-3 border-b border-gray-200">Descrição do Insumo</th><th className="p-3 border-b border-gray-200 text-center">Quant.</th><th className="p-3 border-b border-gray-200 text-right">Custo Base</th></tr>
                         </thead>
-                        <tbody className="divide-y divide-stone-100">
+                        <tbody className="divide-y divide-gray-100">
                             {p.ingredients.map((ing, i) => (
-                                <tr key={i} className="even:bg-stone-50">
-                                    <td className="p-3 font-bold text-stone-500 text-xs uppercase tracking-wider">{ing.section}</td>
-                                    <td className="p-3 font-bold text-stone-900">{ing.name} {ing.fixedQty > 0 ? <span className="text-[9px] text-stone-400 font-normal uppercase ml-1">(Fixo)</span> : ''}</td>
-                                    <td className="p-3 text-center font-black text-brand-orange">{(safeVal(ing.qty) + safeVal(ing.fixedQty)).toFixed(3)} {ing.unit}</td>
-                                    <td className="p-3 text-right font-bold text-stone-800">R$ {formatMoney((toKg(safeVal(ing.qty)+safeVal(ing.fixedQty), ing.unit) * safeVal(ing.cost)))}</td>
+                                <tr key={i} className="even:bg-gray-50">
+                                    <td className="p-3 font-bold text-gray-500 text-xs uppercase tracking-wider">{ing.section}</td>
+                                    <td className="p-3 font-bold text-gray-900">{ing.name} {ing.fixedQty > 0 ? <span className="text-[9px] text-gray-400 font-normal uppercase ml-1">(Fixo)</span> : ''}</td>
+                                    <td className="p-3 text-center font-black text-imac-yellow">{(safeVal(ing.qty) + safeVal(ing.fixedQty)).toFixed(3)} {ing.unit}</td>
+                                    <td className="p-3 text-right font-bold text-gray-800">R$ {formatMoney((toKg(safeVal(ing.qty)+safeVal(ing.fixedQty), ing.unit) * safeVal(ing.cost)))}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
 
-                    <div className="grid grid-cols-2 gap-10 border-t-2 border-stone-200 pt-8">
+                    <div className="grid grid-cols-2 gap-10 border-t-2 border-gray-200 pt-8">
                         <div>
-                            <h3 className="font-black text-lg mb-4 uppercase tracking-widest text-stone-800">Estrutura de Custos</h3>
+                            <h3 className="font-black text-lg mb-4 uppercase tracking-widest text-gray-800">Estrutura de Custos</h3>
                             <div className="space-y-3 text-sm">
-                                <div className="flex justify-between border-b border-stone-100 pb-2"><span className="font-bold text-stone-500">Matéria Prima</span><span className="font-black text-stone-800">R$ {formatMoney(t.directCost)}</span></div>
-                                <div className="flex justify-between border-b border-stone-100 pb-2"><span className="font-bold text-stone-500">Mão de Obra</span><span className="font-black text-stone-800">R$ {formatMoney(t.laborCost)}</span></div>
-                                <div className="flex justify-between border-b border-stone-100 pb-2"><span className="font-bold text-stone-500">Energia / Equipamentos</span><span className="font-black text-stone-800">R$ {formatMoney(t.machineryCost)}</span></div>
-                                <div className="flex justify-between border-b border-stone-100 pb-2"><span className="font-bold text-stone-500">Indiretos / Taxas</span><span className="font-black text-stone-800">R$ {formatMoney(t.indirectCost)}</span></div>
-                                <div className="flex justify-between pt-3"><span className="font-black uppercase tracking-widest text-stone-800 text-lg">Custo Total Lote</span><span className="font-black text-2xl text-red-600">R$ {formatMoney(t.totalCost)}</span></div>
+                                <div className="flex justify-between border-b border-gray-100 pb-2"><span className="font-bold text-gray-500">Matéria Prima</span><span className="font-black text-gray-800">R$ {formatMoney(t.directCost)}</span></div>
+                                <div className="flex justify-between border-b border-gray-100 pb-2"><span className="font-bold text-gray-500">Mão de Obra</span><span className="font-black text-gray-800">R$ {formatMoney(t.laborCost)}</span></div>
+                                <div className="flex justify-between border-b border-gray-100 pb-2"><span className="font-bold text-gray-500">Energia / Equipamentos</span><span className="font-black text-gray-800">R$ {formatMoney(t.machineryCost)}</span></div>
+                                <div className="flex justify-between border-b border-gray-100 pb-2"><span className="font-bold text-gray-500">Indiretos / Taxas</span><span className="font-black text-gray-800">R$ {formatMoney(t.indirectCost)}</span></div>
+                                <div className="flex justify-between pt-3"><span className="font-black uppercase tracking-widest text-gray-800 text-lg">Custo Total Lote</span><span className="font-black text-2xl text-red-600">R$ {formatMoney(t.totalCost)}</span></div>
                             </div>
                         </div>
                         <div>
-                            <h3 className="font-black text-lg mb-4 uppercase tracking-widest text-stone-800">Precificação Estratégica</h3>
-                            <div className="bg-stone-900 text-white p-6 rounded-2xl">
-                                <div className="flex justify-between items-center mb-4"><span className="text-xs font-bold uppercase tracking-widest text-stone-400">Markup Alvo</span><span className="font-black text-xl">{p.targetMargin}%</span></div>
-                                <div className="flex justify-between items-center mb-5"><span className="text-xs font-bold uppercase tracking-widest text-stone-400">Custo Base ({p.outputType==='unit'?'Un':'Kg'})</span><span className="font-black text-2xl text-stone-200">R$ {formatMoney(t.baseCostForPricing)}</span></div>
-                                <div className="flex justify-between items-center border-t border-stone-700 pt-5"><span className="text-sm font-black uppercase tracking-widest text-emerald-400">Preço Sugerido</span><span className="font-black text-4xl text-emerald-400">R$ {formatMoney(t.suggestedPrice)}</span></div>
+                            <h3 className="font-black text-lg mb-4 uppercase tracking-widest text-gray-800">Precificação Estratégica</h3>
+                            <div className="bg-gray-900 text-white p-6 rounded-2xl">
+                                <div className="flex justify-between items-center mb-4"><span className="text-xs font-bold uppercase tracking-widest text-gray-400">Markup Alvo</span><span className="font-black text-xl">{p.targetMargin}%</span></div>
+                                <div className="flex justify-between items-center mb-5"><span className="text-xs font-bold uppercase tracking-widest text-gray-400">Custo Base ({p.outputType==='unit'?'Un':'Kg'})</span><span className="font-black text-2xl text-gray-200">R$ {formatMoney(t.baseCostForPricing)}</span></div>
+                                <div className="flex justify-between items-center border-t border-gray-700 pt-5"><span className="text-sm font-black uppercase tracking-widest text-emerald-400">Preço Sugerido</span><span className="font-black text-4xl text-emerald-400">R$ {formatMoney(t.suggestedPrice)}</span></div>
                             </div>
                         </div>
                     </div>
@@ -1057,7 +1033,7 @@
             );
 
             const renderCatalogEditor = () => {
-                if (!editingProduct) return <div className="p-10 text-center text-stone-500"><Loader2 className="animate-spin mx-auto mb-4"/>A carregar editor...</div>;
+                if (!editingProduct) return <div className="p-10 text-center text-gray-500"><i className="ph ph-spinner animate-spin text-3xl mx-auto mb-4"></i>A carregar editor...</div>;
                 const p = editingProduct;
                 const t = calculateProductData(p);
                 const activeSections = Array.from(new Set(p.ingredients.map(i => i.section || settings?.stages?.[0] || 'Massa')));
@@ -1113,54 +1089,54 @@
                         <PrintTechSheet product={p} calc={t} settings={settings} />
 
                         <div className="print:hidden">
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-stone-200 pb-4">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-gray-200 pb-4">
                                 <div className="flex items-center gap-4">
-                                    <button onClick={() => setView('catalog_list')} className="p-2 bg-white border border-stone-200 hover:bg-stone-50 rounded-xl transition-colors shadow-sm"><ChevronLeft size={20} className="text-stone-600" /></button>
+                                    <button onClick={() => setView('catalog_list')} className="p-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-colors shadow-sm"><i className="ph ph-caret-left text-xl text-gray-600"></i></button>
                                     <div>
-                                        <h2 className="text-2xl font-bold text-stone-900 leading-none">Editor de Ficha</h2>
-                                        <p className="text-xs text-stone-500 font-medium uppercase tracking-widest mt-1">Ref: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVO'}</p>
+                                        <h2 className="text-2xl font-black text-imac-text leading-none tracking-tight">Editor de Ficha</h2>
+                                        <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-1">Ref: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVO'}</p>
                                     </div>
                                 </div>
                                 <div className="flex gap-2 w-full md:w-auto overflow-x-auto">
-                                    <Button variant="outline" onClick={() => window.print()} className="bg-white whitespace-nowrap"><Printer size={16}/> Imprimir Ficha</Button>
-                                    <Button variant="brand" onClick={handleSave} className="whitespace-nowrap w-full md:w-auto"><Save size={16}/> Guardar e Voltar</Button>
+                                    <Button variant="outline" onClick={() => window.print()} className="bg-white whitespace-nowrap"><i className="ph ph-printer text-lg"></i> Imprimir Ficha</Button>
+                                    <Button variant="brand" onClick={handleSave} className="whitespace-nowrap w-full md:w-auto"><i className="ph ph-floppy-disk text-lg"></i> Guardar e Voltar</Button>
                                 </div>
                             </div>
 
                             {/* Cabeçalho do Produto com Imagem */}
-                            <div className="bg-white rounded-xl shadow-sm border border-stone-200 p-6 mb-6 flex flex-col md:flex-row gap-6">
-                                <div className="flex-shrink-0 w-full md:w-48 h-48 bg-stone-50 rounded-xl border-2 border-dashed border-stone-200 flex items-center justify-center overflow-hidden relative group cursor-pointer transition-colors hover:border-brand-orange hover:bg-orange-50 z-0">
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 flex flex-col md:flex-row gap-6">
+                                <div className="flex-shrink-0 w-full md:w-48 h-48 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden relative group cursor-pointer transition-colors hover:border-imac-yellow hover:bg-yellow-50 z-0">
                                     <input type="file" accept="image/*" onChange={handleProductImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"/>
                                     {p.image ? (
                                         <>
                                             <img src={p.image} className="w-full h-full object-cover relative z-0" />
                                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
-                                                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateField('image', null); }} className="text-white bg-red-500 p-2 rounded-full relative z-30 hover:bg-red-600 transition-colors shadow-lg"><Trash2 size={16}/></button>
+                                                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateField('image', null); }} className="text-white bg-red-500 p-2 rounded-full relative z-30 hover:bg-red-600 transition-colors shadow-lg"><i className="ph ph-trash text-lg"></i></button>
                                             </div>
                                         </>
                                     ) : (
-                                        <div className="flex flex-col items-center text-stone-400 group-hover:text-brand-orange transition-colors relative z-0"><ImageIcon size={32} className="mb-2"/><span className="text-xs font-bold uppercase tracking-widest text-center px-4">Adicionar Foto</span></div>
+                                        <div className="flex flex-col items-center text-gray-400 group-hover:text-imac-yellow transition-colors relative z-0"><i className="ph ph-image text-3xl mb-2"></i><span className="text-xs font-bold uppercase tracking-widest text-center px-4">Adicionar Foto</span></div>
                                     )}
                                 </div>
 
                                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 content-start">
-                                    <div className="md:col-span-2"><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Nome do Produto</label><input type="text" value={p.name} onChange={e => updateField('name', e.target.value)} className="w-full p-3 border border-stone-300 rounded-xl outline-none font-bold text-stone-800 focus:border-brand-orange focus:ring-1 focus:ring-orange-500 transition-all text-lg" placeholder="Ex: Pão Francês Tradicional" /></div>
-                                    <div><label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Linha / Categoria</label><SearchableSelect options={settings?.lines || []} value={p.line} onChange={(val) => updateField('line', val)} /></div>
+                                    <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Nome do Produto</label><input type="text" value={p.name} onChange={e => updateField('name', e.target.value)} className="w-full p-3 border border-gray-300 rounded-xl outline-none font-black text-gray-800 focus:border-imac-yellow focus:ring-1 focus:ring-yellow-400 transition-all text-lg" placeholder="Ex: Pão Francês Tradicional" /></div>
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Linha / Categoria</label><SearchableSelect options={settings?.lines || []} value={p.line} onChange={(val) => updateField('line', val)} /></div>
                                     <div>
-                                        <label className="block text-xs font-bold text-stone-500 uppercase mb-1.5">Formato de Venda</label>
-                                        <select value={p.outputType} onChange={e => updateField('outputType', e.target.value)} className="w-full p-3 border border-stone-300 rounded-xl outline-none focus:border-brand-orange bg-white text-sm font-bold text-stone-800 transition-all">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Formato de Venda</label>
+                                        <select value={p.outputType} onChange={e => updateField('outputType', e.target.value)} className="w-full p-3 border border-gray-300 rounded-xl outline-none focus:border-imac-yellow bg-white text-sm font-bold text-gray-800 transition-all">
                                             <option value="kg">Por Kg (Granel)</option>
                                             <option value="unit">Por Unidade / Pacote</option>
                                         </select>
                                     </div>
                                     {p.outputType === 'unit' && (
-                                        <div className="md:col-span-2 bg-orange-50/50 p-4 rounded-xl border border-orange-100 flex items-center gap-4 animate-fade-in mt-2">
-                                            <div className="p-2 bg-white rounded-lg shadow-sm border border-orange-100"><Info className="text-brand-orange" size={20}/></div>
+                                        <div className="md:col-span-2 bg-yellow-50/50 p-4 rounded-xl border border-yellow-100 flex items-center gap-4 animate-fade-in mt-2">
+                                            <div className="p-2 bg-white rounded-lg shadow-sm border border-yellow-100"><i className="ph ph-info text-xl text-imac-yellow"></i></div>
                                             <div className="flex-1">
-                                                <label className="block text-xs font-bold text-orange-800 uppercase mb-2">Peso exato de 1 Unidade para venda</label>
+                                                <label className="block text-xs font-bold text-yellow-800 uppercase mb-2">Peso exato de 1 Unidade para venda</label>
                                                 <div className="flex items-center gap-3">
-                                                    <input type="number" step="0.001" value={p.outputUnitWeight} onChange={e => updateField('outputUnitWeight', e.target.value)} className="w-32 p-3 border border-orange-200 rounded-xl font-bold text-stone-800 outline-none focus:border-brand-orange" placeholder="Ex: 50" />
-                                                    <select value={p.outputUnitMeasure} onChange={e => updateField('outputUnitMeasure', e.target.value)} className="p-3 border border-orange-200 rounded-xl bg-white text-sm font-medium outline-none focus:border-brand-orange"><option value="g">gramas (g)</option><option value="kg">quilos (kg)</option></select>
+                                                    <input type="number" step="0.001" value={p.outputUnitWeight} onChange={e => updateField('outputUnitWeight', e.target.value)} className="w-32 p-3 border border-yellow-200 rounded-xl font-bold text-gray-800 outline-none focus:border-imac-yellow" placeholder="Ex: 50" />
+                                                    <select value={p.outputUnitMeasure} onChange={e => updateField('outputUnitMeasure', e.target.value)} className="p-3 border border-yellow-200 rounded-xl bg-white text-sm font-bold outline-none focus:border-imac-yellow"><option value="g">gramas (g)</option><option value="kg">quilos (kg)</option></select>
                                                 </div>
                                             </div>
                                         </div>
@@ -1169,20 +1145,20 @@
                             </div>
 
                             {/* Abas Navegação */}
-                            <div className="flex overflow-x-auto border-b border-stone-200 mb-6 gap-2 no-print pb-px">
-                                <button onClick={()=>setEditorTab('receita')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='receita' ? 'border-brand-orange text-brand-orange bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><ListChecks size={18}/> Ficha Técnica (Receita)</button>
-                                <button onClick={()=>setEditorTab('custos')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='custos' ? 'border-stone-800 text-stone-800 bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><Shapes size={18}/> Operação & Indiretos</button>
-                                <button onClick={()=>setEditorTab('precificacao')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='precificacao' ? 'border-emerald-600 text-emerald-600 bg-white' : 'border-transparent text-stone-500 hover:text-stone-800 hover:bg-stone-50'}`}><TrendingUp size={18}/> Precificação Final</button>
+                            <div className="flex overflow-x-auto border-b border-gray-200 mb-6 gap-2 no-print pb-px custom-scroll">
+                                <button onClick={()=>setEditorTab('receita')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='receita' ? 'border-imac-yellow text-imac-yellow bg-white' : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}><i className="ph ph-list-checks text-lg"></i> Ficha Técnica (Receita)</button>
+                                <button onClick={()=>setEditorTab('custos')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='custos' ? 'border-gray-800 text-gray-800 bg-white' : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}><i className="ph ph-cube text-lg"></i> Operação & Indiretos</button>
+                                <button onClick={()=>setEditorTab('precificacao')} className={`px-6 py-3.5 font-bold text-sm whitespace-nowrap rounded-t-xl transition-colors flex items-center gap-2 border-b-2 ${editorTab==='precificacao' ? 'border-emerald-600 text-emerald-600 bg-white' : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}><i className="ph ph-trend-up text-lg"></i> Precificação Final</button>
                             </div>
 
                             {/* ABA 1: RECEITA */}
                             <div className={`space-y-6 ${editorTab==='receita' ? 'block animate-fadeIn' : 'hidden'}`}>
                                 {activeSections.length === 0 && (
-                                    <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-stone-200">
-                                        <div className="mx-auto w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4"><ChefHat className="text-stone-400 w-8 h-8"/></div>
-                                        <h3 className="text-lg font-bold text-stone-700">Comece a sua Receita</h3>
-                                        <p className="text-sm text-stone-500 mb-6 max-w-sm mx-auto">Adicione os ingredientes, organize por etapas do processo (Ex: Massa, Recheio) e estabeleça os padrões de perda.</p>
-                                        <Button onClick={() => addIng(settings?.stages?.[0] || 'Massa')} variant="brand" className="mx-auto px-6 py-3"><Plus size={18}/> Adicionar Primeiro Ingrediente</Button>
+                                    <div className="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-gray-200">
+                                        <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4"><i className="ph ph-cookie text-3xl text-gray-400"></i></div>
+                                        <h3 className="text-lg font-black text-gray-700">Comece a sua Receita</h3>
+                                        <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto font-medium">Adicione os ingredientes, organize por etapas do processo (Ex: Massa, Recheio) e estabeleça os padrões de perda.</p>
+                                        <Button onClick={() => addIng(settings?.stages?.[0] || 'Massa')} variant="brand" className="mx-auto px-6 py-3"><i className="ph ph-plus text-lg"></i> Adicionar Primeiro Ingrediente</Button>
                                     </div>
                                 )}
 
@@ -1191,11 +1167,11 @@
                                     const secLoss = p.sections?.[secName]?.processLossPct || 0;
                                     
                                     return (
-                                        <div key={secName} className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-sm avoid-break">
-                                            <div className="bg-stone-50/80 p-5 border-b border-stone-200 flex flex-col md:flex-row justify-between items-center gap-4">
-                                                <h3 className="font-bold text-stone-800 flex items-center gap-3 text-lg"><div className="w-1.5 h-6 bg-brand-orange rounded-full"></div> {secName}</h3>
-                                                <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-stone-200 shadow-sm">
-                                                    <span className="text-xs font-bold uppercase text-stone-500 tracking-wider">Perda (Evaporação/Quebra)</span>
+                                        <div key={secName} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm avoid-break hover:border-imac-yellow transition-colors">
+                                            <div className="bg-gray-50 p-5 border-b border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                                                <h3 className="font-black text-imac-text flex items-center gap-3 text-lg"><div className="w-1.5 h-6 bg-imac-yellow rounded-full"></div> {secName}</h3>
+                                                <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm">
+                                                    <span className="text-xs font-bold uppercase text-gray-500 tracking-wider">Perda (Evaporação/Quebra)</span>
                                                     <div className="flex items-center gap-1">
                                                         <input type="number" className="w-16 text-right font-black text-red-500 outline-none bg-red-50 p-1 rounded" value={secLoss} onChange={e => updateSection(secName, 'processLossPct', Number(e.target.value))} />
                                                         <span className="text-sm font-bold text-red-500">%</span>
@@ -1203,41 +1179,41 @@
                                                 </div>
                                             </div>
                                             <div className="p-5 space-y-3">
-                                                <div className="hidden md:flex gap-3 px-3 text-[10px] font-bold text-stone-400 uppercase tracking-widest border-b border-stone-100 pb-2">
+                                                <div className="hidden md:flex gap-3 px-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-2">
                                                     <div className="flex-1">Ingrediente Base</div><div className="w-24 text-center">Quant.</div><div className="w-16 text-center">Medida</div><div className="w-24 text-center" title="Qtd Fixa Setup">Fixo/Setup*</div><div className="w-32 text-right">Custo Unitário</div><div className="w-10"></div>
                                                 </div>
                                                 {secIngs.map((ing) => {
                                                     const idx = ing.originalIdx;
                                                     const isLinked = !!ing.ingredientId;
                                                     return (
-                                                        <div key={idx} className={`flex flex-wrap md:flex-nowrap gap-3 items-center p-2.5 rounded-xl border transition-all ${isLinked ? 'bg-orange-50/30 border-orange-200 shadow-sm' : 'bg-white hover:bg-stone-50 border-stone-100'}`}>
+                                                        <div key={idx} className={`flex flex-wrap md:flex-nowrap gap-3 items-center p-2.5 rounded-xl border transition-all ${isLinked ? 'bg-yellow-50/30 border-yellow-200 shadow-sm' : 'bg-white hover:bg-gray-50 border-gray-100'}`}>
                                                             <div className="flex-1 flex items-center gap-2 w-full md:w-auto">
-                                                                <button onClick={() => { if(isLinked) handleUnlink(idx); else { setEditorActiveLinkIdx(idx); setEditorIngModalOpen(true); } }} className={`p-2 rounded-lg transition-colors ${isLinked ? 'text-brand-orange bg-orange-100' : 'text-stone-400 bg-stone-100 hover:bg-stone-200'}`} title={isLinked ? "Desvincular" : "Vincular ao Estoque Central"}>
-                                                                    {isLinked ? <LinkIcon size={16}/> : <Unlink size={16}/>}
+                                                                <button onClick={() => { if(isLinked) handleUnlink(idx); else { setEditorActiveLinkIdx(idx); setEditorIngModalOpen(true); } }} className={`p-2 rounded-lg transition-colors ${isLinked ? 'text-imac-yellow bg-yellow-100' : 'text-gray-400 bg-gray-100 hover:bg-gray-200'}`} title={isLinked ? "Desvincular" : "Vincular ao Estoque Central"}>
+                                                                    {isLinked ? <i className="ph ph-link text-lg"></i> : <i className="ph ph-link-break text-lg"></i>}
                                                                 </button>
-                                                                <input placeholder="Nome do Ingrediente..." value={ing.name} onChange={e => updateIng(idx, 'name', e.target.value)} className="w-full bg-transparent border-none outline-none font-medium text-sm text-stone-800 placeholder:text-stone-300" readOnly={isLinked} />
+                                                                <input placeholder="Nome do Ingrediente..." value={ing.name} onChange={e => updateIng(idx, 'name', e.target.value)} className="w-full bg-transparent border-none outline-none font-bold text-sm text-gray-800 placeholder:text-gray-300" readOnly={isLinked} />
                                                             </div>
-                                                            <div className="w-1/3 md:w-24"><input type="number" step="any" placeholder="Qtd" value={ing.qty} onChange={e => updateIng(idx, 'qty', e.target.value)} className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-lg text-sm text-center font-bold text-stone-800 outline-none focus:border-brand-orange" /></div>
-                                                            <div className="w-1/3 md:w-16"><select value={ing.unit} onChange={e => updateIng(idx, 'unit', e.target.value)} className="w-full p-2.5 bg-stone-50 border border-stone-200 rounded-lg text-sm text-center font-medium outline-none" disabled={isLinked}><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">L</option><option value="un">un</option></select></div>
-                                                            <div className="w-1/3 md:w-24"><input type="number" step="any" placeholder="Fixo" value={ing.fixedQty||''} onChange={e => updateIng(idx, 'fixedQty', e.target.value)} className="w-full p-2.5 bg-blue-50/50 border border-blue-200 rounded-lg text-sm text-center text-blue-700 font-medium outline-none" title="Quantidade que não se multiplica ao fazer mais lotes" /></div>
+                                                            <div className="w-1/3 md:w-24"><input type="number" step="any" placeholder="Qtd" value={ing.qty} onChange={e => updateIng(idx, 'qty', e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-center font-black text-gray-800 outline-none focus:border-imac-yellow" /></div>
+                                                            <div className="w-1/3 md:w-16"><select value={ing.unit} onChange={e => updateIng(idx, 'unit', e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-center font-bold outline-none" disabled={isLinked}><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">L</option><option value="un">un</option></select></div>
+                                                            <div className="w-1/3 md:w-24"><input type="number" step="any" placeholder="Fixo" value={ing.fixedQty||''} onChange={e => updateIng(idx, 'fixedQty', e.target.value)} className="w-full p-2.5 bg-blue-50/50 border border-blue-200 rounded-lg text-sm text-center text-blue-700 font-bold outline-none" title="Quantidade que não se multiplica ao fazer mais lotes" /></div>
                                                             <div className="w-full md:w-32 relative flex items-center">
-                                                                <span className="absolute left-3 text-xs font-bold text-stone-400">R$</span>
-                                                                <input type="number" step="any" className={`w-full p-2.5 pl-8 border rounded-lg text-sm text-right font-black outline-none ${isLinked ? 'bg-orange-100/50 text-stone-600 border-orange-200' : 'bg-white border-stone-200 focus:border-brand-orange'}`} value={getIngCostDisplay(ing)} onChange={e => updateIng(idx, 'cost', e.target.value)} readOnly={isLinked} />
+                                                                <span className="absolute left-3 text-xs font-bold text-gray-400">R$</span>
+                                                                <input type="number" step="any" className={`w-full p-2.5 pl-8 border rounded-lg text-sm text-right font-black outline-none ${isLinked ? 'bg-yellow-100/50 text-gray-600 border-yellow-200' : 'bg-white border-gray-200 focus:border-imac-yellow'}`} value={getIngCostDisplay(ing)} onChange={e => updateIng(idx, 'cost', e.target.value)} readOnly={isLinked} />
                                                             </div>
-                                                            <button onClick={() => removeIng(idx)} className="text-stone-300 hover:text-red-500 p-2.5 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                                            <button onClick={() => removeIng(idx)} className="text-gray-300 hover:text-red-500 p-2.5 hover:bg-red-50 rounded-lg transition-colors"><i className="ph ph-trash text-xl"></i></button>
                                                         </div>
                                                     )
                                                 })}
-                                                <Button variant="outline" onClick={() => addIng(secName)} className="mt-4 text-stone-600 w-full border-dashed border-2 py-3"><Plus size={16}/> Adicionar Ingrediente em {secName}</Button>
+                                                <Button variant="outline" onClick={() => addIng(secName)} className="mt-4 text-gray-600 w-full border-dashed border-2 py-3 hover:border-imac-yellow hover:text-imac-yellow"><i className="ph ph-plus text-lg"></i> Adicionar Ingrediente em {secName}</Button>
                                             </div>
                                         </div>
                                     )
                                 })}
 
-                                <div className="bg-stone-50 p-6 border-2 border-dashed border-stone-200 rounded-2xl text-center no-print">
-                                    <span className="block text-sm text-stone-600 font-bold mb-4 uppercase tracking-wider">Criar Nova Etapa de Produção:</span>
+                                <div className="bg-gray-50 p-6 border-2 border-dashed border-gray-200 rounded-xl text-center no-print">
+                                    <span className="block text-sm text-gray-600 font-bold mb-4 uppercase tracking-wider">Criar Nova Etapa de Produção:</span>
                                     <div className="inline-flex flex-wrap gap-2 justify-center">
-                                        {(settings?.stages || []).map(s => <button key={s} onClick={() => addIng(s)} className="px-4 py-2 bg-white border shadow-sm rounded-xl text-xs font-bold text-stone-700 hover:border-brand-orange hover:text-brand-orange transition-all">+ {s}</button>)}
+                                        {(settings?.stages || []).map(s => <button key={s} onClick={() => addIng(s)} className="px-4 py-2 bg-white border shadow-sm rounded-xl text-xs font-bold text-gray-700 hover:border-imac-yellow hover:text-imac-yellow transition-all">+ {s}</button>)}
                                     </div>
                                 </div>
                             </div>
@@ -1246,25 +1222,25 @@
                             <div className={`space-y-6 ${editorTab==='custos' ? 'block animate-fadeIn' : 'hidden'}`}>
                                 {/* Mão de Obra */}
                                 <Card className="overflow-hidden border-0 shadow-md">
-                                    <div className="px-6 py-4 bg-stone-800 text-white flex items-center gap-3"><Clock size={20}/><h3 className="font-bold text-lg">Mão de Obra Operacional</h3></div>
-                                    <div className="p-6 space-y-3 bg-stone-50/30">
+                                    <div className="px-6 py-4 bg-gray-800 text-white flex items-center gap-3"><i className="ph ph-clock text-xl"></i><h3 className="font-black text-lg uppercase tracking-wide">Mão de Obra Operacional</h3></div>
+                                    <div className="p-6 space-y-3 bg-gray-50/30">
                                         {p.laborItems?.map(l => {
                                             const emp = (settings?.employees || []).find(e => e.id == l.employeeId);
                                             return (
-                                                <div key={l.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
-                                                    <div className="flex-1 font-bold text-sm text-stone-800 pl-2">{emp?.name || 'Desconhecido'}</div>
-                                                    <div className="flex items-center gap-2 bg-stone-50 px-4 py-2 rounded-lg border border-stone-200">
-                                                        <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-stone-800" value={l.minutes} onChange={e => { const nl = p.laborItems.map(x=>x.id===l.id?{...x,minutes:e.target.value}:x); updateField('laborItems', nl); }}/> 
-                                                        <span className="text-xs font-bold text-stone-500 uppercase">minutos</span>
+                                                <div key={l.id} className="flex gap-3 items-center bg-white border border-gray-200 p-3 rounded-xl shadow-sm">
+                                                    <div className="flex-1 font-bold text-sm text-gray-800 pl-2">{emp?.name || 'Desconhecido'}</div>
+                                                    <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
+                                                        <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-gray-800" value={l.minutes} onChange={e => { const nl = p.laborItems.map(x=>x.id===l.id?{...x,minutes:e.target.value}:x); updateField('laborItems', nl); }}/> 
+                                                        <span className="text-xs font-bold text-gray-500 uppercase">minutos</span>
                                                     </div>
-                                                    <button onClick={() => { const nl = p.laborItems.filter(x=>x.id!==l.id); updateField('laborItems', nl); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                                    <button onClick={() => { const nl = p.laborItems.filter(x=>x.id!==l.id); updateField('laborItems', nl); }} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><i className="ph ph-trash text-xl"></i></button>
                                                 </div>
                                             )
                                         })}
-                                        <div className="flex flex-col sm:flex-row gap-3 mt-4 bg-stone-100 p-4 rounded-xl border border-stone-200 border-dashed">
-                                            <select id="newLaborEmp" className="flex-1 p-3 bg-white border border-stone-200 rounded-xl text-sm font-medium outline-none"><option value="">Selecionar Profissional...</option>{(settings?.employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+                                        <div className="flex flex-col sm:flex-row gap-3 mt-4 bg-gray-100 p-4 rounded-xl border border-gray-200 border-dashed">
+                                            <select id="newLaborEmp" className="flex-1 p-3 bg-white border border-gray-200 rounded-xl text-sm font-bold outline-none focus:border-imac-yellow"><option value="">Selecionar Profissional...</option>{(settings?.employees || []).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
                                             <div className="flex gap-3">
-                                                <input id="newLaborMin" type="number" placeholder="Minutos" className="w-32 p-3 bg-white border border-stone-200 rounded-xl text-sm text-center outline-none font-bold"/>
+                                                <input id="newLaborMin" type="number" placeholder="Minutos" className="w-32 p-3 bg-white border border-gray-200 rounded-xl text-sm text-center outline-none font-black focus:border-imac-yellow"/>
                                                 <Button onClick={() => { 
                                                     const empId = document.getElementById('newLaborEmp').value; const min = document.getElementById('newLaborMin').value;
                                                     if(empId && min) { updateField('laborItems', [...(p.laborItems||[]), {id:generateId(), employeeId: empId, minutes: Number(min)}]); document.getElementById('newLaborEmp').value=''; document.getElementById('newLaborMin').value='';}
@@ -1276,43 +1252,43 @@
 
                                 {/* Energia */}
                                 <Card className="overflow-hidden border-0 shadow-md">
-                                    <div className="px-6 py-4 bg-yellow-500 text-yellow-950 flex items-center gap-3"><Zap size={20}/><h3 className="font-bold text-lg">Maquinário & Energia</h3></div>
-                                    <div className="p-6 space-y-3 bg-stone-50/30">
+                                    <div className="px-6 py-4 bg-imac-yellow text-white flex items-center gap-3"><i className="ph ph-lightning text-xl"></i><h3 className="font-black text-lg uppercase tracking-wide">Maquinário & Energia</h3></div>
+                                    <div className="p-6 space-y-3 bg-gray-50/30">
                                         {p.machineryItems?.map(m => {
                                             return (
-                                                <div key={m.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
-                                                    <select className="flex-1 p-2 text-sm font-bold text-stone-800 border-none bg-transparent outline-none" value={m.machineId} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,machineId:e.target.value}:x); updateField('machineryItems', nm); }}>{(settings?.machines || []).map(sm => <option key={sm.id} value={sm.id}>{sm.name}</option>)}</select>
-                                                    <div className="flex items-center gap-2 bg-stone-50 px-4 py-2 rounded-lg border border-stone-200">
-                                                        <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-stone-800" value={m.timeMinutes} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,timeMinutes:e.target.value}:x); updateField('machineryItems', nm); }}/> 
-                                                        <span className="text-xs font-bold text-stone-500 uppercase">minutos</span>
+                                                <div key={m.id} className="flex gap-3 items-center bg-white border border-gray-200 p-3 rounded-xl shadow-sm">
+                                                    <select className="flex-1 p-2 text-sm font-bold text-gray-800 border-none bg-transparent outline-none focus:ring-0" value={m.machineId} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,machineId:e.target.value}:x); updateField('machineryItems', nm); }}>{(settings?.machines || []).map(sm => <option key={sm.id} value={sm.id}>{sm.name}</option>)}</select>
+                                                    <div className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
+                                                        <input type="number" className="w-16 bg-transparent text-right outline-none font-black text-gray-800" value={m.timeMinutes} onChange={e => { const nm = p.machineryItems.map(x=>x.id===m.id?{...x,timeMinutes:e.target.value}:x); updateField('machineryItems', nm); }}/> 
+                                                        <span className="text-xs font-bold text-gray-500 uppercase">minutos</span>
                                                     </div>
-                                                    <button onClick={() => { const nm = p.machineryItems.filter(x=>x.id!==m.id); updateField('machineryItems', nm); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                                    <button onClick={() => { const nm = p.machineryItems.filter(x=>x.id!==m.id); updateField('machineryItems', nm); }} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><i className="ph ph-trash text-xl"></i></button>
                                                 </div>
                                             )
                                         })}
-                                        <Button onClick={() => updateField('machineryItems', [...(p.machineryItems||[]), {id:generateId(), machineId: settings?.machines?.[0]?.id, timeMinutes: 60}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-stone-600"><Plus size={16}/> Adicionar Uso de Máquina</Button>
+                                        <Button onClick={() => updateField('machineryItems', [...(p.machineryItems||[]), {id:generateId(), machineId: settings?.machines?.[0]?.id, timeMinutes: 60}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-gray-600 hover:border-imac-yellow hover:text-imac-yellow"><i className="ph ph-plus text-lg"></i> Adicionar Uso de Máquina</Button>
                                     </div>
                                 </Card>
 
                                 {/* Indiretos */}
                                 <Card className="overflow-hidden border-0 shadow-md">
-                                    <div className="px-6 py-4 bg-brand-orange text-white flex items-center gap-3"><Coins size={20}/><h3 className="font-bold text-lg">Custos Indiretos / Taxas / Embalagens</h3></div>
-                                    <div className="p-6 space-y-3 bg-stone-50/30">
-                                        <p className="text-xs font-medium text-stone-500 mb-4 bg-stone-100 p-3 rounded-lg border border-stone-200">Nota: Os itens importados das configurações padrão podem ser editados livremente apenas para esta ficha.</p>
+                                    <div className="px-6 py-4 bg-imac-blue text-white flex items-center gap-3"><i className="ph ph-coins text-xl"></i><h3 className="font-black text-lg uppercase tracking-wide">Custos Indiretos / Taxas / Embalagens</h3></div>
+                                    <div className="p-6 space-y-3 bg-gray-50/30">
+                                        <p className="text-xs font-bold text-gray-500 mb-4 bg-gray-100 p-3 rounded-lg border border-gray-200">Nota: Os itens importados das configurações padrão podem ser editados livremente apenas para esta ficha.</p>
                                         {p.indirectItems?.map(ind => (
-                                            <div key={ind.id} className="flex gap-3 items-center bg-white border border-stone-200 p-3 rounded-xl shadow-sm">
-                                                <input type="text" placeholder="Descrição do Custo..." value={ind.name} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,name:e.target.value}:x); updateField('indirectItems', ni); }} className="flex-1 text-sm font-bold text-stone-800 outline-none pl-2 border-none bg-transparent"/>
-                                                <div className="flex items-center bg-stone-50 rounded-lg border border-stone-200 overflow-hidden">
-                                                    <select value={ind.type || 'R$'} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,type:e.target.value}:x); updateField('indirectItems', ni); }} className="p-3 bg-stone-100 text-xs font-black text-stone-600 outline-none border-r border-stone-200 cursor-pointer">
+                                            <div key={ind.id} className="flex gap-3 items-center bg-white border border-gray-200 p-3 rounded-xl shadow-sm">
+                                                <input type="text" placeholder="Descrição do Custo..." value={ind.name} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,name:e.target.value}:x); updateField('indirectItems', ni); }} className="flex-1 text-sm font-bold text-gray-800 outline-none pl-2 border-none bg-transparent"/>
+                                                <div className="flex items-center bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                                    <select value={ind.type || 'R$'} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,type:e.target.value}:x); updateField('indirectItems', ni); }} className="p-3 bg-gray-100 text-xs font-black text-gray-600 outline-none border-r border-gray-200 cursor-pointer">
                                                         <option value="R$">R$</option>
                                                         <option value="%">%</option>
                                                     </select>
-                                                    <input type="number" step="0.01" className="w-24 bg-transparent text-right outline-none font-black text-stone-800 p-3" value={ind.cost} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,cost:e.target.value}:x); updateField('indirectItems', ni); }}/>
+                                                    <input type="number" step="0.01" className="w-24 bg-transparent text-right outline-none font-black text-gray-800 p-3" value={ind.cost} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,cost:e.target.value}:x); updateField('indirectItems', ni); }}/>
                                                 </div>
-                                                <button onClick={() => { const ni = p.indirectItems.filter(x=>x.id!==ind.id); updateField('indirectItems', ni); }} className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={18}/></button>
+                                                <button onClick={() => { const ni = p.indirectItems.filter(x=>x.id!==ind.id); updateField('indirectItems', ni); }} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><i className="ph ph-trash text-xl"></i></button>
                                             </div>
                                         ))}
-                                        <Button onClick={() => updateField('indirectItems', [...(p.indirectItems||[]), {id:generateId(), name:'', cost:0, type: 'R$'}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-stone-600"><Plus size={16}/> Adicionar Novo Custo Indireto</Button>
+                                        <Button onClick={() => updateField('indirectItems', [...(p.indirectItems||[]), {id:generateId(), name:'', cost:0, type: 'R$'}])} variant="outline" className="w-full border-dashed border-2 py-3 mt-4 text-gray-600 hover:border-imac-yellow hover:text-imac-yellow"><i className="ph ph-plus text-lg"></i> Adicionar Novo Custo Indireto</Button>
                                     </div>
                                 </Card>
                             </div>
@@ -1321,36 +1297,36 @@
                             <div className={`space-y-6 ${editorTab==='precificacao' ? 'block animate-fadeIn' : 'hidden'}`}>
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                     <div className="space-y-8">
-                                        <Card className="p-6 border-t-4 border-stone-800 shadow-md">
-                                            <h3 className="font-black text-stone-900 border-b border-stone-100 pb-4 mb-5 uppercase text-sm tracking-widest">Estrutura de Custos (1 Lote)</h3>
+                                        <Card className="p-6 border-t-4 border-gray-800 shadow-md">
+                                            <h3 className="font-black text-imac-text border-b border-gray-100 pb-4 mb-5 uppercase text-sm tracking-widest">Estrutura de Custos (1 Lote)</h3>
                                             <div className="space-y-4">
-                                                <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-brand-orange"></div> Matéria Prima</span><span className="font-black text-stone-800">R$ {formatMoney(t.directCost)}</span></div>
-                                                <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-stone-800"></div> Mão de Obra</span><span className="font-black text-stone-800">R$ {formatMoney(t.laborCost)}</span></div>
-                                                <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-yellow-500"></div> Energia / Máquinas</span><span className="font-black text-stone-800">R$ {formatMoney(t.machineryCost)}</span></div>
-                                                <div className="flex justify-between items-center p-3 bg-stone-50 rounded-lg border border-stone-100"><span className="text-sm font-bold text-stone-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-purple-500"></div> Indiretos & Taxas</span><span className="font-black text-stone-800">R$ {formatMoney(t.indirectCost)}</span></div>
+                                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100"><span className="text-sm font-bold text-gray-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-imac-blue"></div> Matéria Prima</span><span className="font-black text-gray-800">R$ {formatMoney(t.directCost)}</span></div>
+                                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100"><span className="text-sm font-bold text-gray-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-gray-800"></div> Mão de Obra</span><span className="font-black text-gray-800">R$ {formatMoney(t.laborCost)}</span></div>
+                                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100"><span className="text-sm font-bold text-gray-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-imac-yellow"></div> Energia / Máquinas</span><span className="font-black text-gray-800">R$ {formatMoney(t.machineryCost)}</span></div>
+                                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100"><span className="text-sm font-bold text-gray-600 flex items-center gap-3"><div className="w-2 h-2 rounded-full bg-purple-500"></div> Indiretos & Taxas</span><span className="font-black text-gray-800">R$ {formatMoney(t.indirectCost)}</span></div>
                                             </div>
-                                            <div className="mt-6 p-4 bg-stone-900 rounded-xl flex justify-between items-center shadow-inner">
-                                                <span className="font-bold text-stone-300 uppercase tracking-widest text-xs">Custo Total do Lote</span>
+                                            <div className="mt-6 p-4 bg-gray-900 rounded-xl flex justify-between items-center shadow-inner">
+                                                <span className="font-bold text-gray-300 uppercase tracking-widest text-xs">Custo Total do Lote</span>
                                                 <span className="font-black text-2xl text-white">R$ {formatMoney(t.totalCost)}</span>
                                             </div>
                                         </Card>
 
-                                        <Card className="p-6 bg-gradient-to-br from-stone-50 to-stone-100 border-stone-200 shadow-md">
-                                            <h3 className="font-black text-stone-800 border-b border-stone-200 pb-4 mb-5 uppercase text-sm tracking-widest">Rendimento Técnico</h3>
+                                        <Card className="p-6 bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200 shadow-md">
+                                            <h3 className="font-black text-gray-800 border-b border-gray-200 pb-4 mb-5 uppercase text-sm tracking-widest">Rendimento Técnico</h3>
                                             <div className="space-y-5">
-                                                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
-                                                    <div><span className="block text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Massa Bruta (Entrada)</span><span className="font-black text-xl text-stone-700">{t.grandTotalGrossKg.toFixed(3)} <span className="text-sm font-bold text-stone-400">kg</span></span></div>
-                                                    <div className="bg-stone-100 p-2 rounded-full"><ArrowRight className="text-stone-400" size={20}/></div>
-                                                    <div className="text-right"><span className="block text-[10px] font-bold text-brand-orange uppercase tracking-wider mb-1">Final (Após Quebras)</span><span className="font-black text-2xl text-stone-900">{t.finalYieldKg.toFixed(3)} <span className="text-sm font-bold text-brand-orange">kg</span></span></div>
+                                                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                                    <div><span className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Massa Bruta (Entrada)</span><span className="font-black text-xl text-gray-700">{t.grandTotalGrossKg.toFixed(3)} <span className="text-sm font-bold text-gray-400">kg</span></span></div>
+                                                    <div className="bg-gray-100 p-2 rounded-full"><i className="ph ph-arrow-right text-gray-400 text-xl"></i></div>
+                                                    <div className="text-right"><span className="block text-[10px] font-bold text-imac-blue uppercase tracking-wider mb-1">Final (Após Quebras)</span><span className="font-black text-2xl text-gray-900">{t.finalYieldKg.toFixed(3)} <span className="text-sm font-bold text-imac-blue">kg</span></span></div>
                                                 </div>
                                                 
                                                 <div className="bg-white p-5 rounded-xl border-l-4 border-l-emerald-500 shadow-sm">
-                                                    <span className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">Custo Base ({p.outputType === 'unit' ? 'Por Unidade' : 'Por Quilo'})</span>
+                                                    <span className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Custo Base ({p.outputType === 'unit' ? 'Por Unidade' : 'Por Quilo'})</span>
                                                     <span className="block font-black text-4xl text-emerald-600">R$ {formatMoney(t.baseCostForPricing)}</span>
                                                 </div>
 
                                                 {p.outputType === 'unit' && (
-                                                    <div className="flex justify-between text-sm font-bold text-stone-500 px-2">
+                                                    <div className="flex justify-between text-sm font-bold text-gray-500 px-2">
                                                         <span>Peso Ref: {p.outputUnitWeight}{p.outputUnitMeasure}</span>
                                                         <span>1 Lote rende ~{t.totalUnits} unidades</span>
                                                     </div>
@@ -1359,28 +1335,28 @@
                                         </Card>
                                     </div>
 
-                                    <Card className="p-0 overflow-hidden border-brand-orange/30 shadow-xl flex flex-col h-full">
-                                        <div className="bg-brand-orange px-6 py-5 flex items-center gap-3"><TrendingUp className="text-white"/><h3 className="font-black text-white text-lg tracking-wide uppercase">Simulador de Preço</h3></div>
+                                    <Card className="p-0 overflow-hidden border-imac-yellow/30 shadow-xl flex flex-col h-full">
+                                        <div className="bg-imac-yellow px-6 py-5 flex items-center gap-3"><i className="ph ph-trend-up text-white text-2xl"></i><h3 className="font-black text-white text-lg tracking-wide uppercase">Simulador de Preço</h3></div>
                                         <div className="p-8 flex flex-col gap-8 flex-1 bg-white">
                                             
                                             <div className="space-y-6">
                                                 <div>
-                                                    <label className="flex items-center justify-between text-sm font-bold text-stone-600 uppercase mb-2">
+                                                    <label className="flex items-center justify-between text-sm font-bold text-gray-600 uppercase mb-2">
                                                         <span>Markup Alvo (Margem %)</span>
                                                     </label>
                                                     <div className="relative">
-                                                        <input type="number" className="w-full p-4 bg-orange-50/50 border border-orange-200 rounded-xl text-brand-orange font-black text-2xl outline-none focus:ring-2 focus:ring-brand-orange transition-all" value={p.targetMargin} onChange={e => updateField('targetMargin', Number(e.target.value))} />
-                                                        <span className="absolute right-5 top-4 text-orange-400 font-black text-2xl">%</span>
+                                                        <input type="number" className="w-full p-4 bg-yellow-50/50 border border-yellow-200 rounded-xl text-imac-yellow font-black text-2xl outline-none focus:ring-2 focus:ring-imac-yellow transition-all" value={p.targetMargin} onChange={e => updateField('targetMargin', Number(e.target.value))} />
+                                                        <span className="absolute right-5 top-4 text-yellow-500 font-black text-2xl">%</span>
                                                     </div>
                                                 </div>
-                                                <div className="bg-stone-50 p-5 rounded-xl border border-stone-200 flex justify-between items-center">
-                                                    <span className="block text-xs font-bold text-stone-500 uppercase w-32">Preço Sugerido ({p.outputType==='unit'?'Un':'Kg'})</span>
-                                                    <span className="block text-3xl font-black text-stone-800">R$ {formatMoney(t.suggestedPrice)}</span>
+                                                <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 flex justify-between items-center">
+                                                    <span className="block text-xs font-bold text-gray-500 uppercase w-32">Preço Sugerido ({p.outputType==='unit'?'Un':'Kg'})</span>
+                                                    <span className="block text-3xl font-black text-gray-800">R$ {formatMoney(t.suggestedPrice)}</span>
                                                 </div>
                                             </div>
 
-                                            <div className="bg-stone-900 rounded-2xl p-8 shadow-inner mt-auto">
-                                                <label className="block text-sm font-bold text-stone-400 uppercase mb-4 flex items-center gap-2 tracking-wider"><DollarSign size={18}/> Preço de Venda Real Praticado</label>
+                                            <div className="bg-gray-900 rounded-2xl p-8 shadow-inner mt-auto">
+                                                <label className="block text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2 tracking-wider"><i className="ph ph-currency-dollar text-lg"></i> Preço de Venda Real Praticado</label>
                                                 <div className="relative mb-8">
                                                     <span className="absolute left-4 top-4 text-white/50 font-black text-3xl">R$</span>
                                                     <input type="number" step="0.01" className="w-full p-4 pl-16 bg-white/10 border-2 border-white/20 rounded-xl text-4xl font-black text-white outline-none focus:border-emerald-500 transition-colors" value={p.manualSalePrice||''} onChange={e => updateField('manualSalePrice', Number(e.target.value))} placeholder={formatMoney(t.suggestedPrice)} />
@@ -1392,7 +1368,7 @@
                                                         <span className="block text-2xl font-black">{formatMoney(t.marginPercent)}%</span>
                                                     </div>
                                                     <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-                                                        <span className="block text-[10px] uppercase font-bold text-stone-400 tracking-widest mb-1">Lucro Bruto ({p.outputType==='unit'?'Un':'Kg'})</span>
+                                                        <span className="block text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1">Lucro Bruto ({p.outputType==='unit'?'Un':'Kg'})</span>
                                                         <span className="block text-2xl font-black text-white">R$ {formatMoney(t.grossProfit)}</span>
                                                     </div>
                                                 </div>
@@ -1404,8 +1380,8 @@
                             </div>
                         </div>
 
-                        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 p-4 shadow-lg flex justify-center gap-4 z-50 md:hidden">
-                             <Button onClick={handleSave} className="bg-brand-brown text-white w-full"><Save size={18}/> Guardar Produto</Button>
+                        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg flex justify-center gap-4 z-50 md:hidden">
+                             <Button onClick={handleSave} className="bg-imac-text text-white w-full"><i className="ph ph-floppy-disk text-lg"></i> Guardar Produto</Button>
                         </div>
                     </div>
                 );
@@ -1436,52 +1412,52 @@
                 );
                 
                 return (
-                    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+                    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-20">
                         <NavHeader title="Estoque Integrado de Insumos" />
                         
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <Card className="p-6 h-fit bg-white border-none shadow-md">
-                                <h3 className="font-black text-stone-800 mb-6 flex items-center gap-2 text-lg uppercase tracking-wider"><Plus className="text-brand-orange"/> Novo Insumo Manual</h3>
+                            <Card className="p-6 h-fit bg-white border border-gray-200 shadow-sm">
+                                <h3 className="font-black text-gray-800 mb-6 flex items-center gap-2 text-lg uppercase tracking-wider"><i className="ph ph-plus text-imac-yellow"></i> Novo Insumo Manual</h3>
                                 <div className="space-y-5">
                                     <div className="grid grid-cols-3 gap-3">
-                                        <div className="col-span-1"><label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Cód. ERP</label><input placeholder="Ex: 114" value={invNewIng.code} onChange={e=>setInvNewIng({...invNewIng, code: e.target.value})} className="w-full p-3 border border-stone-200 rounded-xl outline-none focus:border-brand-orange bg-stone-50 font-mono text-sm" /></div>
-                                        <div className="col-span-2"><label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Descrição / Nome</label><input placeholder="Ex: Farinha de Trigo" value={invNewIng.name} onChange={e=>setInvNewIng({...invNewIng, name: e.target.value})} className="w-full p-3 border border-stone-200 rounded-xl outline-none focus:border-brand-orange bg-stone-50 text-sm font-bold text-stone-800" /></div>
+                                        <div className="col-span-1"><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Cód. ERP</label><input placeholder="Ex: 114" value={invNewIng.code} onChange={e=>setInvNewIng({...invNewIng, code: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-imac-yellow bg-gray-50 font-mono text-sm" /></div>
+                                        <div className="col-span-2"><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Descrição / Nome</label><input placeholder="Ex: Farinha de Trigo" value={invNewIng.name} onChange={e=>setInvNewIng({...invNewIng, name: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-imac-yellow bg-gray-50 text-sm font-black text-gray-800" /></div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <div><label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Preço (R$)</label><input type="number" step="0.01" placeholder="0.00" value={invNewIng.price} onChange={e=>setInvNewIng({...invNewIng, price: e.target.value})} className="w-full p-3 border border-stone-200 rounded-xl outline-none focus:border-brand-orange font-black text-brand-orange bg-orange-50/30" /></div>
-                                        <div><label className="block text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Unidade</label><input placeholder="kg, L, un" value={invNewIng.unit} onChange={e=>setInvNewIng({...invNewIng, unit: e.target.value})} className="w-full p-3 border border-stone-200 rounded-xl outline-none focus:border-brand-orange bg-stone-50 text-center font-bold text-stone-600 text-sm" /></div>
+                                        <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Preço (R$)</label><input type="number" step="0.01" placeholder="0.00" value={invNewIng.price} onChange={e=>setInvNewIng({...invNewIng, price: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-imac-yellow font-black text-imac-yellow bg-yellow-50/30" /></div>
+                                        <div><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Unidade</label><input placeholder="kg, L, un" value={invNewIng.unit} onChange={e=>setInvNewIng({...invNewIng, unit: e.target.value})} className="w-full p-3 border border-gray-200 rounded-xl outline-none focus:border-imac-yellow bg-gray-50 text-center font-bold text-gray-600 text-sm" /></div>
                                     </div>
-                                    <Button className="w-full bg-stone-900 text-white shadow-md py-3.5 mt-2" onClick={addIng}>Gravar no Estoque</Button>
+                                    <Button className="w-full bg-imac-text text-white shadow-md py-3.5 mt-2" onClick={addIng}>Gravar no Estoque</Button>
                                 </div>
                             </Card>
 
-                            <Card className="p-0 lg:col-span-2 overflow-hidden flex flex-col border-none shadow-md">
-                                <div className="bg-stone-900 text-white px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-                                    <div className="flex items-center gap-3"><Database size={20} className="text-brand-orange"/><h3 className="font-bold text-lg tracking-wide">Base de Dados de Insumos</h3><span className="bg-white/10 px-2.5 py-1 rounded-lg text-xs font-black border border-white/10">{ingredients.length}</span></div>
+                            <Card className="p-0 lg:col-span-2 overflow-hidden flex flex-col border border-gray-200 shadow-sm">
+                                <div className="bg-gray-900 text-white px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3"><i className="ph ph-database text-2xl text-imac-yellow"></i><h3 className="font-black text-lg tracking-wide">Base de Dados de Insumos</h3><span className="bg-white/10 px-2.5 py-1 rounded-lg text-xs font-black border border-white/10">{ingredients.length}</span></div>
                                     <div className="flex items-center gap-3 w-full sm:w-auto">
-                                        <div className="relative flex-1 sm:w-64 text-stone-900">
-                                            <Search className="absolute left-3 top-2.5 text-stone-400" size={18}/>
-                                            <input type="text" placeholder="Pesquisa Inteligente (Nome ou Cód)..." value={invSearch} onChange={e=>setInvSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm rounded-xl bg-white border-0 outline-none focus:ring-2 focus:ring-brand-orange font-medium"/>
+                                        <div className="relative flex-1 sm:w-64 text-gray-900">
+                                            <i className="ph ph-magnifying-glass absolute left-3 top-2.5 text-gray-400 text-lg"></i>
+                                            <input type="text" placeholder="Pesquisa Inteligente (Nome ou Cód)..." value={invSearch} onChange={e=>setInvSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm rounded-xl bg-white border-0 outline-none focus:ring-2 focus:ring-imac-yellow font-bold"/>
                                         </div>
-                                        <button onClick={() => setView('inv_print')} className="bg-white/10 hover:bg-white/20 border border-white/10 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors" title="Imprimir Base de Dados"><FileOutput size={16}/> Ficha TI</button>
+                                        <button onClick={() => setView('inv_print')} className="bg-white/10 hover:bg-white/20 border border-white/10 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors" title="Imprimir Base de Dados"><i className="ph ph-file-arrow-down text-lg"></i> Ficha TI</button>
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto flex-1 custom-scroll h-[600px] bg-white">
                                     <table className="w-full text-sm text-left">
-                                        <thead className="bg-stone-50 text-stone-400 uppercase text-[10px] tracking-widest font-black sticky top-0 shadow-sm z-10">
-                                            <tr><th className="p-4 w-24 text-center border-b border-stone-200">Cód. ERP</th><th className="p-4 border-b border-stone-200">Descrição do Insumo</th><th className="p-4 text-center border-b border-stone-200 w-20">Unid</th><th className="p-4 text-right border-b border-stone-200 w-32">Preço (R$)</th><th className="p-4 border-b border-stone-200 w-16"></th></tr>
+                                        <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] tracking-widest font-black sticky top-0 shadow-sm z-10">
+                                            <tr><th className="p-4 w-24 text-center border-b border-gray-200">Cód. ERP</th><th className="p-4 border-b border-gray-200">Descrição do Insumo</th><th className="p-4 text-center border-b border-gray-200 w-20">Unid</th><th className="p-4 text-right border-b border-gray-200 w-32">Preço (R$)</th><th className="p-4 border-b border-gray-200 w-16"></th></tr>
                                         </thead>
-                                        <tbody className="divide-y divide-stone-100">
+                                        <tbody className="divide-y divide-gray-100">
                                             {filteredIngredients.map(i => (
-                                                <tr key={i.id} className="hover:bg-stone-50 transition-colors group">
-                                                    <td className="p-3 text-center"><input value={i.code || ''} placeholder="-" onChange={e=>updateIng(i.id, 'code', e.target.value)} className="w-16 bg-transparent border border-transparent outline-none text-center focus:bg-white focus:border-stone-300 rounded-lg px-2 py-1.5 text-stone-500 font-mono text-xs transition-all"/></td>
-                                                    <td className="p-3"><input value={i.name} onChange={e=>updateIng(i.id, 'name', e.target.value)} className="w-full bg-transparent border border-transparent outline-none font-bold text-stone-800 focus:bg-white focus:border-brand-orange rounded-lg px-3 py-1.5 transition-all"/></td>
-                                                    <td className="p-3 text-center"><input value={i.unit} onChange={e=>updateIng(i.id, 'unit', e.target.value)} className="w-14 bg-transparent border border-transparent outline-none text-center focus:bg-white focus:border-stone-300 rounded-lg px-2 py-1.5 font-medium text-stone-600 transition-all"/></td>
-                                                    <td className="p-3 text-right"><div className="flex items-center justify-end gap-1"><span className="text-stone-400 text-xs font-bold">R$</span><input type="number" step="0.01" value={i.price} onChange={e=>updateIng(i.id, 'price', Number(e.target.value))} className="w-20 bg-transparent border border-transparent outline-none font-black text-stone-900 text-right focus:bg-white focus:border-brand-orange rounded-lg px-2 py-1.5 transition-all"/></div></td>
-                                                    <td className="p-3 text-center"><button onClick={()=>removeIng(i.id)} className="text-stone-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button></td>
+                                                <tr key={i.id} className="hover:bg-gray-50 transition-colors group">
+                                                    <td className="p-3 text-center"><input value={i.code || ''} placeholder="-" onChange={e=>updateIng(i.id, 'code', e.target.value)} className="w-16 bg-transparent border border-transparent outline-none text-center focus:bg-white focus:border-gray-300 rounded-lg px-2 py-1.5 text-gray-500 font-mono text-xs font-bold transition-all"/></td>
+                                                    <td className="p-3"><input value={i.name} onChange={e=>updateIng(i.id, 'name', e.target.value)} className="w-full bg-transparent border border-transparent outline-none font-black text-gray-800 focus:bg-white focus:border-imac-yellow rounded-lg px-3 py-1.5 transition-all"/></td>
+                                                    <td className="p-3 text-center"><input value={i.unit} onChange={e=>updateIng(i.id, 'unit', e.target.value)} className="w-14 bg-transparent border border-transparent outline-none text-center focus:bg-white focus:border-gray-300 rounded-lg px-2 py-1.5 font-bold text-gray-600 transition-all"/></td>
+                                                    <td className="p-3 text-right"><div className="flex items-center justify-end gap-1"><span className="text-gray-400 text-xs font-bold">R$</span><input type="number" step="0.01" value={i.price} onChange={e=>updateIng(i.id, 'price', Number(e.target.value))} className="w-20 bg-transparent border border-transparent outline-none font-black text-gray-900 text-right focus:bg-white focus:border-imac-yellow rounded-lg px-2 py-1.5 transition-all"/></div></td>
+                                                    <td className="p-3 text-center"><button onClick={()=>removeIng(i.id)} className="text-gray-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all"><i className="ph ph-trash text-lg"></i></button></td>
                                                 </tr>
                                             ))}
-                                            {filteredIngredients.length === 0 && <tr><td colSpan="5" className="text-center p-16 text-stone-400 font-medium">Nenhum insumo encontrado na base de dados.</td></tr>}
+                                            {filteredIngredients.length === 0 && <tr><td colSpan="5" className="text-center p-16 text-gray-400 font-bold">Nenhum insumo encontrado na base de dados.</td></tr>}
                                         </tbody>
                                     </table>
                                 </div>
@@ -1499,32 +1475,32 @@
 
                 return (
                     <div className="max-w-4xl mx-auto p-8 bg-white min-h-screen shadow-2xl">
-                        <div className="no-print flex justify-between items-center mb-8 border-b border-stone-200 pb-6">
-                            <Button variant="secondary" onClick={() => setView('inventory')} className="text-sm"><ChevronLeft size={18}/> Voltar ao Estoque</Button>
-                            <Button onClick={() => window.print()} className="bg-stone-900 text-white text-sm"><Printer size={18}/> Imprimir Ficha TI</Button>
+                        <div className="no-print flex justify-between items-center mb-8 border-b border-gray-200 pb-6">
+                            <Button variant="secondary" onClick={() => setView('inventory')} className="text-sm"><i className="ph ph-caret-left text-lg"></i> Voltar ao Estoque</Button>
+                            <Button onClick={() => window.print()} className="bg-gray-900 text-white text-sm font-bold"><i className="ph ph-printer text-lg"></i> Imprimir Ficha TI</Button>
                         </div>
                         <div className="text-center mb-10">
                             {settings?.logo && <img src={settings.logo} className="h-16 w-auto mx-auto mb-4" />}
-                            <h1 className="text-2xl font-bold uppercase tracking-widest text-stone-800">Ficha de Cadastro de Insumos</h1>
-                            <p className="text-stone-500">Para atualização no Sistema (TI)</p>
-                            <p className="text-xs text-stone-400 mt-1 font-bold">Data de Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+                            <h1 className="text-2xl font-black uppercase tracking-widest text-gray-800">Ficha de Cadastro de Insumos</h1>
+                            <p className="text-gray-500 font-bold mt-1">Para atualização no Sistema (TI)</p>
+                            <p className="text-xs text-gray-400 mt-1 font-bold">Data de Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
                         </div>
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="border-b-2 border-stone-800 text-stone-800 uppercase text-xs">
+                                <tr className="border-b-2 border-gray-800 text-gray-800 uppercase text-xs font-black">
                                     <th className="py-2 pl-2">Código ERP</th>
                                     <th className="py-2">Item / Descrição</th>
                                     <th className="py-2 text-center">Unid.</th>
                                     <th className="py-2 pr-2 text-right">Preço Ref. (R$)</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-stone-200">
+                            <tbody className="divide-y divide-gray-200">
                                 {filteredIngredients.map((i, idx) => (
-                                    <tr key={idx} className="text-sm hover:bg-stone-50">
-                                        <td className="py-2 pl-2 font-mono font-bold text-stone-600">{i.code || <span className="text-stone-300 italic">Sem Código</span>}</td>
-                                        <td className="py-2 font-medium text-stone-900">{i.name}</td>
-                                        <td className="py-2 text-center text-stone-600">{i.unit}</td>
-                                        <td className="py-2 pr-2 text-right text-stone-800 font-medium">{formatMoney(i.price)}</td>
+                                    <tr key={idx} className="text-sm hover:bg-gray-50">
+                                        <td className="py-2 pl-2 font-mono font-bold text-gray-600">{i.code || <span className="text-gray-300 italic">Sem Código</span>}</td>
+                                        <td className="py-2 font-bold text-gray-900">{i.name}</td>
+                                        <td className="py-2 text-center font-bold text-gray-600">{i.unit}</td>
+                                        <td className="py-2 pr-2 text-right text-gray-800 font-black">{formatMoney(i.price)}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -1585,40 +1561,40 @@
                 return (
                     <div className="max-w-5xl mx-auto space-y-6 animate-fade-in pb-20">
                         <NavHeader title="Ordens de Produção" />
-                        <Card className="p-6 md:p-8 mb-6 border-none shadow-md bg-gradient-to-br from-white to-stone-50 no-print">
+                        <Card className="p-6 md:p-8 mb-6 border border-gray-200 shadow-sm bg-gradient-to-br from-white to-gray-50 no-print">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                                <div className="md:col-span-2"><label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Selecione o Produto a Fabricar</label><SearchableSelect options={catalog.map(c => ({label: c.name, value: c.id}))} value={poSelectedProduct} onChange={setPoSelectedProduct} placeholder="Pesquisar Produto..." /></div>
+                                <div className="md:col-span-2"><label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Selecione o Produto a Fabricar</label><SearchableSelect options={catalog.map(c => ({label: c.name, value: c.id}))} value={poSelectedProduct} onChange={setPoSelectedProduct} placeholder="Pesquisar Produto..." /></div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-2">Escalonamento Matemático</label>
-                                    <div className="flex bg-stone-200 p-1.5 rounded-xl overflow-x-auto shadow-inner">
-                                        <button onClick={()=>setPoMode('batch')} className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${poMode==='batch'?'bg-white shadow-sm text-stone-900':'text-stone-500 hover:text-stone-700'}`}>Lotes</button>
-                                        <button onClick={()=>setPoMode('target')} className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${poMode==='target'?'bg-white shadow-sm text-stone-900':'text-stone-500 hover:text-stone-700'}`}>Kg Final</button>
-                                        <button onClick={()=>setPoMode('proportional')} className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${poMode==='proportional'?'bg-white shadow-sm text-stone-900':'text-stone-500 hover:text-stone-700'}`}>Por Item</button>
+                                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Escalonamento Matemático</label>
+                                    <div className="flex bg-gray-200 p-1.5 rounded-xl overflow-x-auto shadow-inner">
+                                        <button onClick={()=>setPoMode('batch')} className={`flex-1 py-2 px-2 text-xs font-black rounded-lg whitespace-nowrap transition-all ${poMode==='batch'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700'}`}>Lotes</button>
+                                        <button onClick={()=>setPoMode('target')} className={`flex-1 py-2 px-2 text-xs font-black rounded-lg whitespace-nowrap transition-all ${poMode==='target'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700'}`}>Kg Final</button>
+                                        <button onClick={()=>setPoMode('proportional')} className={`flex-1 py-2 px-2 text-xs font-black rounded-lg whitespace-nowrap transition-all ${poMode==='proportional'?'bg-white shadow-sm text-gray-900':'text-gray-500 hover:text-gray-700'}`}>Por Item</button>
                                     </div>
                                 </div>
                             </div>
                             {p && (
-                                <div className="mt-8 flex flex-col md:flex-row gap-6 items-end border-t border-stone-200 pt-8 animate-fade-in">
-                                    {poMode === 'proportional' && (<div className="flex-1 w-full"><label className="block text-[10px] font-bold text-brand-orange uppercase tracking-widest mb-2">Basear a matemática em:</label><SearchableSelect options={basisOptions} value={poBasisItem} onChange={setPoBasisItem} placeholder="Ex: Massa, Farinha..." /></div>)}
+                                <div className="mt-8 flex flex-col md:flex-row gap-6 items-end border-t border-gray-200 pt-8 animate-fade-in">
+                                    {poMode === 'proportional' && (<div className="flex-1 w-full"><label className="block text-[10px] font-bold text-imac-blue uppercase tracking-widest mb-2">Basear a matemática em:</label><SearchableSelect options={basisOptions} value={poBasisItem} onChange={setPoBasisItem} placeholder="Ex: Massa, Farinha..." /></div>)}
                                     <div className="flex-1 w-full">
-                                        <label className="block text-[10px] font-bold text-brand-orange uppercase tracking-widest mb-2">{poMode === 'batch' ? 'Quantos Lotes / Receitas Base?' : poMode === 'target' ? 'Qual a Meta de Quilos (Kg) Final?' : 'Qual a Quantidade Disponível (Kg)?'}</label>
-                                        <input type="number" step="any" value={poInputValue} onChange={e=>setPoInputValue(e.target.value)} className="w-full p-4 border border-orange-200 rounded-xl text-3xl font-black text-stone-800 outline-none focus:border-brand-orange bg-white shadow-inner transition-all" />
+                                        <label className="block text-[10px] font-bold text-imac-blue uppercase tracking-widest mb-2">{poMode === 'batch' ? 'Quantos Lotes / Receitas Base?' : poMode === 'target' ? 'Qual a Meta de Quilos (Kg) Final?' : 'Qual a Quantidade Disponível (Kg)?'}</label>
+                                        <input type="number" step="any" value={poInputValue} onChange={e=>setPoInputValue(e.target.value)} className="w-full p-4 border border-blue-200 rounded-xl text-3xl font-black text-gray-800 outline-none focus:border-imac-blue bg-white shadow-inner transition-all" />
                                     </div>
-                                    <Button onClick={()=>window.print()} className="h-16 px-8 bg-stone-900 text-white w-full md:w-auto shadow-lg hover:shadow-xl"><Printer size={20}/> Imprimir Ficha de Produção</Button>
+                                    <Button onClick={()=>window.print()} className="h-16 px-8 bg-imac-text text-white w-full md:w-auto shadow-lg hover:shadow-xl"><i className="ph ph-printer text-xl"></i> Imprimir Ficha de Produção</Button>
                                 </div>
                             )}
                         </Card>
 
                         {order && (
-                            <Card className="border-none shadow-2xl overflow-hidden print-shadow-none">
-                                <div className="bg-stone-900 text-white p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                                    <div><span className="text-stone-400 text-[10px] font-bold uppercase tracking-widest block mb-2 flex items-center gap-2"><ClipboardList size={14}/> Ordem de Produção Emitida</span><h2 className="text-3xl font-black">{p.name}</h2><p className="text-sm font-medium text-stone-400 mt-2 bg-stone-800 inline-block px-3 py-1 rounded-lg">Cálculo Base: {order.referenceLabel}</p></div>
-                                    <div className="md:text-right w-full md:w-auto bg-stone-800 md:bg-transparent p-4 md:p-0 rounded-xl"><span className="text-stone-400 text-[10px] font-bold uppercase tracking-widest block mb-2">Rendimento Alvo Estimado</span><span className="text-4xl font-black text-emerald-400">{order.finalProductWeightKg.toFixed(3)} <span className="text-xl text-emerald-600">kg</span></span>{p.outputType === 'unit' && p.outputUnitWeight > 0 && (<span className="block text-sm font-bold text-stone-400 mt-2">Equivalente a ~ {Math.floor(order.finalProductWeightKg / toKg(p.outputUnitWeight, p.outputUnitMeasure))} unidades</span>)}</div>
+                            <Card className="border border-gray-200 shadow-xl overflow-hidden print-shadow-none">
+                                <div className="bg-imac-text text-white p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                                    <div><span className="text-gray-400 text-[10px] font-bold uppercase tracking-widest block mb-2 flex items-center gap-2"><i className="ph ph-clipboard-text text-sm"></i> Ordem de Produção Emitida</span><h2 className="text-3xl font-black">{p.name}</h2><p className="text-sm font-bold text-gray-300 mt-2 bg-gray-800 inline-block px-3 py-1 rounded-lg">Cálculo Base: {order.referenceLabel}</p></div>
+                                    <div className="md:text-right w-full md:w-auto bg-gray-800 md:bg-transparent p-4 md:p-0 rounded-xl"><span className="text-gray-400 text-[10px] font-bold uppercase tracking-widest block mb-2">Rendimento Alvo Estimado</span><span className="text-4xl font-black text-emerald-400">{order.finalProductWeightKg.toFixed(3)} <span className="text-xl text-emerald-600">kg</span></span>{p.outputType === 'unit' && p.outputUnitWeight > 0 && (<span className="block text-sm font-bold text-gray-400 mt-2">Equivalente a ~ {Math.floor(order.finalProductWeightKg / toKg(p.outputUnitWeight, p.outputUnitMeasure))} unidades</span>)}</div>
                                 </div>
                                 <div className="p-8">
-                                    <div className="flex flex-col md:flex-row gap-6 mb-10 bg-stone-50 p-6 rounded-2xl border border-stone-200 shadow-inner">
-                                        <div className="flex-1 md:border-r border-stone-200 md:pr-6"><span className="block text-[10px] text-stone-500 uppercase font-bold tracking-widest mb-1">Múltiplo de Lotes Escalonado</span><span className="text-2xl font-black text-stone-800">{order.targetBatches.toFixed(3)}x <span className="text-sm font-bold text-stone-400">Padrão</span></span></div>
-                                        <div className="flex-1 md:pl-6 pt-6 md:pt-0 border-t md:border-t-0 border-stone-200"><span className="block text-[10px] text-stone-500 uppercase font-bold tracking-widest mb-1">Massa Bruta Total (Entrada)</span><span className="text-2xl font-black text-stone-800">{order.grossTotal.toFixed(3)} <span className="text-sm font-bold text-stone-400">kg</span></span></div>
+                                    <div className="flex flex-col md:flex-row gap-6 mb-10 bg-gray-50 p-6 rounded-2xl border border-gray-200 shadow-inner">
+                                        <div className="flex-1 md:border-r border-gray-200 md:pr-6"><span className="block text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Múltiplo de Lotes Escalonado</span><span className="text-2xl font-black text-gray-800">{order.targetBatches.toFixed(3)}x <span className="text-sm font-bold text-gray-400">Padrão</span></span></div>
+                                        <div className="flex-1 md:pl-6 pt-6 md:pt-0 border-t md:border-t-0 border-gray-200"><span className="block text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Massa Bruta Total (Entrada)</span><span className="text-2xl font-black text-gray-800">{order.grossTotal.toFixed(3)} <span className="text-sm font-bold text-gray-400">kg</span></span></div>
                                     </div>
                                 </div>
                             </Card>
@@ -1626,6 +1602,20 @@
                     </div>
                 );
             };
+
+            const renderMonitoring = () => {
+                // Placeholder para Monitoramento (mantendo a view simplificada para não deixar vazio)
+                return (
+                    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in pb-20">
+                        <NavHeader title="Monitoramento de Qualidade & Rendimento" />
+                        <Card className="p-10 text-center border-gray-200">
+                            <i className="ph ph-activity text-5xl text-gray-300 mb-4"></i>
+                            <h3 className="text-lg font-black text-gray-700">Módulo em Desenvolvimento</h3>
+                            <p className="text-sm text-gray-500 mt-2 font-medium">Os registros de qualidade e controle estatístico do processo estarão disponíveis em breve nesta área integrada.</p>
+                        </Card>
+                    </div>
+                );
+            }
 
             const renderSettingsView = () => {
                 const handleExport = () => { const data = JSON.stringify({ catalog, ingredients, settings, logs }); const blob = new Blob([data], {type: "application/json"}); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.download = `backup_gestao_${new Date().toISOString().slice(0,10)}.json`; link.href = url; link.click(); };
@@ -1647,21 +1637,21 @@
                     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in pb-20">
                         <NavHeader title="Configurações do Sistema" />
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <Card className="p-6 md:col-span-2 flex flex-col md:flex-row items-center justify-between bg-stone-900 border-none shadow-md gap-4 text-white">
-                                <div><h3 className="font-bold text-lg flex items-center gap-2 mb-1"><Archive className="text-stone-400"/> Backup Integrado</h3><p className="text-sm text-stone-400 font-medium">Faça o download ou restaure toda a base de dados num único ficheiro JSON seguro.</p></div>
+                            <Card className="p-6 md:col-span-2 flex flex-col md:flex-row items-center justify-between bg-imac-text border-none shadow-md gap-4 text-white">
+                                <div><h3 className="font-black text-lg flex items-center gap-2 mb-1"><i className="ph ph-archive text-gray-400"></i> Backup Integrado</h3><p className="text-sm text-gray-400 font-bold">Faça o download ou restaure toda a base de dados num único ficheiro JSON seguro.</p></div>
                                 <div className="flex gap-3 w-full md:w-auto">
                                     <div className="relative flex-1 md:flex-none">
                                         <input type="file" accept=".json" onChange={handleImport} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
-                                        <Button variant="secondary" className="w-full bg-white/10 text-white border-white/20 hover:bg-white/20 relative z-0"><Upload size={16}/> Restaurar</Button>
+                                        <Button variant="secondary" className="w-full bg-white/10 text-white border-white/20 hover:bg-white/20 relative z-0"><i className="ph ph-upload-simple"></i> Restaurar</Button>
                                     </div>
-                                    <Button onClick={handleExport} className="bg-brand-orange text-white flex-1 md:flex-none hover:bg-orange-600 border-none"><Download size={16}/> Exportar DB</Button>
+                                    <Button onClick={handleExport} className="bg-imac-yellow text-white flex-1 md:flex-none hover:opacity-90 border-none"><i className="ph ph-file-arrow-down text-lg"></i> Exportar DB</Button>
                                 </div>
                             </Card>
 
-                            <Card className="p-6 border-none shadow-sm">
-                                <h3 className="font-black text-stone-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><ImageIcon size={16} className="text-stone-400"/> Logótipo da Empresa</h3>
+                            <Card className="p-6 border-gray-200 shadow-sm">
+                                <h3 className="font-black text-gray-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><i className="ph ph-image text-gray-400 text-base"></i> Logótipo da Empresa</h3>
                                 <div className="flex gap-5 items-center">
-                                    <div className="w-24 h-24 bg-stone-50 rounded-2xl border-2 border-dashed border-stone-200 flex items-center justify-center overflow-hidden relative group transition-colors hover:border-brand-orange hover:bg-orange-50 cursor-pointer z-0">
+                                    <div className="w-24 h-24 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden relative group transition-colors hover:border-imac-yellow hover:bg-yellow-50 cursor-pointer z-0">
                                         <input type="file" accept="image/*" onChange={async (e) => { 
                                             const f = e.target.files[0]; 
                                             if(f){ 
@@ -1677,80 +1667,80 @@
                                             <>
                                                 <img src={settings.logo} className="w-full h-full object-contain p-2 relative z-0"/>
                                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-10">
-                                                    <button onClick={(e)=>{e.preventDefault(); e.stopPropagation(); updateSettings({...settings, logo: null});}} className="text-white bg-red-500 p-2 rounded-full relative z-20 hover:bg-red-600 transition-colors shadow-lg"><Trash2 size={16}/></button>
+                                                    <button onClick={(e)=>{e.preventDefault(); e.stopPropagation(); updateSettings({...settings, logo: null});}} className="text-white bg-red-500 p-2 rounded-full relative z-20 hover:bg-red-600 transition-colors shadow-lg"><i className="ph ph-trash text-lg"></i></button>
                                                 </div>
                                             </>
                                         ) : (
-                                            <ImageIcon className="text-stone-300 relative z-0"/>
+                                            <i className="ph ph-image text-3xl text-gray-300 relative z-0"></i>
                                         )}
                                     </div>
-                                    <p className="text-xs text-stone-500 font-medium">Aparece no cabeçalho e nas impressões PDF.</p>
+                                    <p className="text-xs text-gray-500 font-bold">Aparece no cabeçalho e nas impressões PDF.</p>
                                 </div>
                             </Card>
-                            <Card className="p-6 border-none shadow-sm">
-                                <h3 className="font-black text-stone-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><Zap size={16} className="text-yellow-500"/> Tarifa de Energia</h3>
-                                <div><label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-2">Preço KWh Referência (R$)</label><input type="number" step="0.01" value={settings?.kwhPrice || 0} onChange={e=>updateSettings({...settings, kwhPrice: Number(e.target.value)})} className="w-full p-3 border border-stone-200 rounded-xl font-black text-stone-800 outline-none focus:border-yellow-500 bg-stone-50 transition-colors" /></div>
+                            <Card className="p-6 border-gray-200 shadow-sm">
+                                <h3 className="font-black text-gray-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><i className="ph ph-lightning text-yellow-500 text-base"></i> Tarifa de Energia</h3>
+                                <div><label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">Preço KWh Referência (R$)</label><input type="number" step="0.01" value={settings?.kwhPrice || 0} onChange={e=>updateSettings({...settings, kwhPrice: Number(e.target.value)})} className="w-full p-3 border border-gray-200 rounded-xl font-black text-gray-800 outline-none focus:border-yellow-500 bg-gray-50 transition-colors" /></div>
                             </Card>
 
-                            <Card className="p-6 md:col-span-2 border-none shadow-sm">
-                                <h3 className="font-black text-stone-800 text-lg mb-2 flex items-center gap-2 uppercase tracking-widest text-[11px]"><Coins size={16} className="text-brand-orange"/> Taxas e Indiretos (Padrão Global)</h3>
-                                <p className="text-xs text-stone-500 font-medium mb-6">Estas parcelas serão adicionadas automaticamente à aba de Custos de <strong>todas as novas Fichas Técnicas</strong>.</p>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-stone-50 p-5 rounded-2xl border border-stone-200 border-dashed">
-                                    <input className="md:col-span-2 border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" placeholder="Ex: Taxa TPA, Embalagem Genérica" value={setNewIndirect.name} onChange={e=>setSetNewIndirect({...setNewIndirect, name: e.target.value})} />
-                                    <div className="flex items-center bg-white rounded-xl border border-stone-200 overflow-hidden focus-within:border-brand-orange transition-colors">
-                                        <select value={setNewIndirect.type} onChange={e=>setSetNewIndirect({...setNewIndirect, type: e.target.value})} className="p-3 bg-stone-100 text-sm font-black text-stone-600 outline-none border-r border-stone-200 cursor-pointer">
+                            <Card className="p-6 md:col-span-2 border-gray-200 shadow-sm">
+                                <h3 className="font-black text-gray-800 text-lg mb-2 flex items-center gap-2 uppercase tracking-widest text-[11px]"><i className="ph ph-coins text-imac-yellow text-base"></i> Taxas e Indiretos (Padrão Global)</h3>
+                                <p className="text-xs text-gray-500 font-bold mb-6">Estas parcelas serão adicionadas automaticamente à aba de Custos de <strong>todas as novas Fichas Técnicas</strong>.</p>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-gray-50 p-5 rounded-2xl border border-gray-200 border-dashed">
+                                    <input className="md:col-span-2 border border-gray-200 bg-white rounded-xl px-4 py-3 text-sm font-black text-gray-800 outline-none focus:border-imac-yellow transition-colors" placeholder="Ex: Taxa TPA, Embalagem Genérica" value={setNewIndirect.name} onChange={e=>setSetNewIndirect({...setNewIndirect, name: e.target.value})} />
+                                    <div className="flex items-center bg-white rounded-xl border border-gray-200 overflow-hidden focus-within:border-imac-yellow transition-colors">
+                                        <select value={setNewIndirect.type} onChange={e=>setSetNewIndirect({...setNewIndirect, type: e.target.value})} className="p-3 bg-gray-100 text-sm font-black text-gray-600 outline-none border-r border-gray-200 cursor-pointer">
                                             <option value="%">%</option>
                                             <option value="R$">R$</option>
                                         </select>
-                                        <input type="number" step="0.01" className="w-full border-none px-3 py-3 text-sm font-black text-stone-800 outline-none focus:ring-0 text-right" placeholder="0.00" value={setNewIndirect.cost} onChange={e=>setSetNewIndirect({...setNewIndirect, cost: e.target.value})} />
+                                        <input type="number" step="0.01" className="w-full border-none px-3 py-3 text-sm font-black text-gray-800 outline-none focus:ring-0 text-right" placeholder="0.00" value={setNewIndirect.cost} onChange={e=>setSetNewIndirect({...setNewIndirect, cost: e.target.value})} />
                                     </div>
-                                    <Button onClick={addDefaultIndirect} className="bg-stone-900 text-white rounded-xl">Registar Padrão</Button>
+                                    <Button onClick={addDefaultIndirect} className="bg-imac-text text-white rounded-xl">Registar Padrão</Button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     {(settings?.defaultIndirectCosts || []).map(ind => (
-                                        <div key={ind.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm hover:border-brand-orange transition-colors group">
+                                        <div key={ind.id} className="flex justify-between items-center p-4 border border-gray-200 rounded-xl bg-white shadow-sm hover:border-imac-yellow transition-colors group">
                                             <div>
-                                                <div className="font-bold text-sm text-stone-800 mb-0.5">{ind.name}</div>
-                                                <div className="text-xs font-black text-brand-orange">{ind.type === '%' ? `${ind.cost}% do Subtotal` : `R$ ${ind.cost} fixos`}</div>
+                                                <div className="font-black text-sm text-gray-800 mb-0.5">{ind.name}</div>
+                                                <div className="text-xs font-black text-imac-yellow">{ind.type === '%' ? `${ind.cost}% do Subtotal` : `R$ ${ind.cost} fixos`}</div>
                                             </div>
-                                            <button onClick={()=>removeDefaultIndirect(ind.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button>
+                                            <button onClick={()=>removeDefaultIndirect(ind.id)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><i className="ph ph-trash text-xl"></i></button>
                                         </div>
                                     ))}
                                 </div>
                             </Card>
 
-                            <Card className="p-6 border-none shadow-sm">
-                                <h3 className="font-black text-stone-800 mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]">Categorias de Produto</h3>
-                                <div className="flex gap-2 mb-6"><input value={setNewLine} onChange={e=>setSetNewLine(e.target.value)} placeholder="Ex: Padaria Fria" className="flex-1 p-3 border border-stone-200 bg-stone-50 rounded-xl text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" /><Button onClick={addLine} className="bg-stone-900 text-white px-4 rounded-xl"><Plus size={18}/></Button></div>
-                                <ul className="space-y-2">{(settings?.lines || []).map(l => <li key={l} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{l}<button onClick={()=>removeLine(l)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
+                            <Card className="p-6 border-gray-200 shadow-sm">
+                                <h3 className="font-black text-gray-800 mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]">Categorias de Produto</h3>
+                                <div className="flex gap-2 mb-6"><input value={setNewLine} onChange={e=>setSetNewLine(e.target.value)} placeholder="Ex: Padaria Fria" className="flex-1 p-3 border border-gray-200 bg-gray-50 rounded-xl text-sm font-black text-gray-800 outline-none focus:border-imac-yellow transition-colors" /><Button onClick={addLine} className="bg-imac-text text-white px-4 rounded-xl"><i className="ph ph-plus text-lg"></i></Button></div>
+                                <ul className="space-y-2">{(settings?.lines || []).map(l => <li key={l} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-bold border border-gray-200 shadow-sm group text-gray-700">{l}<button onClick={()=>removeLine(l)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><i className="ph ph-trash text-lg"></i></button></li>)}</ul>
                             </Card>
-                            <Card className="p-6 border-none shadow-sm">
-                                <h3 className="font-black text-stone-800 mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]">Etapas de Processo</h3>
-                                <div className="flex gap-2 mb-6"><input value={setNewStage} onChange={e=>setSetNewStage(e.target.value)} placeholder="Ex: Forneamento" className="flex-1 p-3 border border-stone-200 bg-stone-50 rounded-xl text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" /><Button onClick={addStage} className="bg-stone-900 text-white px-4 rounded-xl"><Plus size={18}/></Button></div>
-                                <ul className="space-y-2">{(settings?.stages || []).map(s => <li key={s} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-medium border border-stone-200 shadow-sm group">{s}<button onClick={()=>removeStage(s)} className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16}/></button></li>)}</ul>
-                            </Card>
-
-                            <Card className="p-6 md:col-span-2 border-none shadow-sm">
-                                <h3 className="font-black text-stone-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><Users size={16} className="text-stone-400"/> Profissionais & Cargos</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6 bg-stone-50 p-5 rounded-2xl border border-stone-200 border-dashed">
-                                    <input className="md:col-span-2 border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" placeholder="Cargo (Ex: Padeiro)" value={setNewEmployee.name} onChange={e=>setSetNewEmployee({...setNewEmployee, name: e.target.value})} />
-                                    <input type="number" className="border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" placeholder="Salário (R$)" value={setNewEmployee.salary} onChange={e=>setSetNewEmployee({...setNewEmployee, salary: Number(e.target.value)})} />
-                                    <div className="md:col-span-2 flex gap-3"><input type="number" className="w-full border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-bold text-stone-800 text-center outline-none focus:border-brand-orange transition-colors" placeholder="Carga (Hrs/mês)" value={setNewEmployee.hoursMonth} onChange={e=>setSetNewEmployee({...setNewEmployee, hoursMonth: Number(e.target.value)})} /><Button onClick={addEmployee} className="bg-stone-900 text-white rounded-xl w-full">Registar</Button></div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {(settings?.employees || []).map(e => <div key={e.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{e.name}</div><div className="text-xs font-bold text-stone-400 tracking-wider">R$ {e.salary} <span className="font-medium text-stone-300">|</span> {e.hoursMonth}h/mês</div></div><button onClick={()=>removeEmployee(e.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
-                                </div>
+                            <Card className="p-6 border-gray-200 shadow-sm">
+                                <h3 className="font-black text-gray-800 mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]">Etapas de Processo</h3>
+                                <div className="flex gap-2 mb-6"><input value={setNewStage} onChange={e=>setSetNewStage(e.target.value)} placeholder="Ex: Forneamento" className="flex-1 p-3 border border-gray-200 bg-gray-50 rounded-xl text-sm font-black text-gray-800 outline-none focus:border-imac-yellow transition-colors" /><Button onClick={addStage} className="bg-imac-text text-white px-4 rounded-xl"><i className="ph ph-plus text-lg"></i></Button></div>
+                                <ul className="space-y-2">{(settings?.stages || []).map(s => <li key={s} className="flex justify-between items-center bg-white p-3 rounded-xl text-sm font-bold border border-gray-200 shadow-sm group text-gray-700">{s}<button onClick={()=>removeStage(s)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><i className="ph ph-trash text-lg"></i></button></li>)}</ul>
                             </Card>
 
-                            <Card className="p-6 md:col-span-2 border-none shadow-sm">
-                                <h3 className="font-black text-stone-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><Settings size={16} className="text-stone-400"/> Equipamentos de Produção</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-stone-50 p-5 rounded-2xl border border-stone-200 border-dashed">
-                                    <input className="md:col-span-2 border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-bold text-stone-800 outline-none focus:border-brand-orange transition-colors" placeholder="Equipamento (Ex: Forno Elétrico)" value={setNewMachine.name} onChange={e=>setSetNewMachine({...setNewMachine, name: e.target.value})} />
-                                    <input type="number" className="border border-stone-200 bg-white rounded-xl px-4 py-3 text-sm font-black text-brand-orange text-right outline-none focus:border-brand-orange transition-colors" placeholder="Consumo Watts" value={setNewMachine.powerWatts} onChange={e=>setSetNewMachine({...setNewMachine, powerWatts: Number(e.target.value)})} />
-                                    <Button onClick={addMachine} className="bg-stone-900 text-white rounded-xl w-full">Registar Eq.</Button>
+                            <Card className="p-6 md:col-span-2 border-gray-200 shadow-sm">
+                                <h3 className="font-black text-gray-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><i className="ph ph-users text-gray-400 text-base"></i> Profissionais & Cargos</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6 bg-gray-50 p-5 rounded-2xl border border-gray-200 border-dashed">
+                                    <input className="md:col-span-2 border border-gray-200 bg-white rounded-xl px-4 py-3 text-sm font-black text-gray-800 outline-none focus:border-imac-yellow transition-colors" placeholder="Cargo (Ex: Padeiro)" value={setNewEmployee.name} onChange={e=>setSetNewEmployee({...setNewEmployee, name: e.target.value})} />
+                                    <input type="number" className="border border-gray-200 bg-white rounded-xl px-4 py-3 text-sm font-black text-gray-800 outline-none focus:border-imac-yellow transition-colors" placeholder="Salário (R$)" value={setNewEmployee.salary} onChange={e=>setSetNewEmployee({...setNewEmployee, salary: Number(e.target.value)})} />
+                                    <div className="md:col-span-2 flex gap-3"><input type="number" className="w-full border border-gray-200 bg-white rounded-xl px-4 py-3 text-sm font-black text-gray-800 text-center outline-none focus:border-imac-yellow transition-colors" placeholder="Carga (Hrs/mês)" value={setNewEmployee.hoursMonth} onChange={e=>setSetNewEmployee({...setNewEmployee, hoursMonth: Number(e.target.value)})} /><Button onClick={addEmployee} className="bg-imac-text text-white rounded-xl w-full">Registar</Button></div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {(settings?.machines || []).map(m => <div key={m.id} className="flex justify-between items-center p-4 border border-stone-200 rounded-xl bg-white shadow-sm group"><div><div className="font-bold text-sm text-stone-800 mb-0.5">{m.name}</div><div className="text-xs font-black text-brand-orange tracking-wider">{m.powerWatts} <span className="font-medium text-stone-400">Watts</span></div></div><button onClick={()=>removeMachine(m.id)} className="text-stone-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={18}/></button></div>)}
+                                    {(settings?.employees || []).map(e => <div key={e.id} className="flex justify-between items-center p-4 border border-gray-200 rounded-xl bg-white shadow-sm group"><div><div className="font-black text-sm text-gray-800 mb-0.5">{e.name}</div><div className="text-xs font-bold text-gray-500 tracking-wider">R$ {e.salary} <span className="font-medium text-gray-300">|</span> {e.hoursMonth}h/mês</div></div><button onClick={()=>removeEmployee(e.id)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><i className="ph ph-trash text-xl"></i></button></div>)}
+                                </div>
+                            </Card>
+
+                            <Card className="p-6 md:col-span-2 border-gray-200 shadow-sm">
+                                <h3 className="font-black text-gray-800 text-lg mb-4 flex items-center gap-2 uppercase tracking-widest text-[11px]"><i className="ph ph-gear text-gray-400 text-base"></i> Equipamentos de Produção</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-gray-50 p-5 rounded-2xl border border-gray-200 border-dashed">
+                                    <input className="md:col-span-2 border border-gray-200 bg-white rounded-xl px-4 py-3 text-sm font-black text-gray-800 outline-none focus:border-imac-yellow transition-colors" placeholder="Equipamento (Ex: Forno Elétrico)" value={setNewMachine.name} onChange={e=>setSetNewMachine({...setNewMachine, name: e.target.value})} />
+                                    <input type="number" className="border border-gray-200 bg-white rounded-xl px-4 py-3 text-sm font-black text-imac-yellow text-right outline-none focus:border-imac-yellow transition-colors" placeholder="Consumo Watts" value={setNewMachine.powerWatts} onChange={e=>setSetNewMachine({...setNewMachine, powerWatts: Number(e.target.value)})} />
+                                    <Button onClick={addMachine} className="bg-imac-text text-white rounded-xl w-full">Registar Eq.</Button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {(settings?.machines || []).map(m => <div key={m.id} className="flex justify-between items-center p-4 border border-gray-200 rounded-xl bg-white shadow-sm group"><div><div className="font-black text-sm text-gray-800 mb-0.5">{m.name}</div><div className="text-xs font-black text-imac-yellow tracking-wider">{m.powerWatts} <span className="font-bold text-gray-500">Watts</span></div></div><button onClick={()=>removeMachine(m.id)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><i className="ph ph-trash text-xl"></i></button></div>)}
                                 </div>
                             </Card>
                         </div>
@@ -1759,20 +1749,20 @@
             };
 
             const menuItems = [
-                { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
-                { id: 'catalog_list', label: 'Fichas Técnicas', icon: Book },
-                { id: 'inventory', label: 'Estoque / Insumos', icon: Database },
-                { id: 'prod_orders', label: 'Ordens de Produção', icon: ClipboardList },
-                { id: 'prod_monitoring', label: 'Qualidade & Rend.', icon: Activity },
-                { id: 'settings', label: 'Configurações', icon: Settings }
+                { id: 'dashboard', label: 'Visão Geral', icon: 'ph-squares-four' },
+                { id: 'catalog_list', label: 'Fichas Técnicas', icon: 'ph-book-open' },
+                { id: 'inventory', label: 'Estoque / Insumos', icon: 'ph-database' },
+                { id: 'prod_orders', label: 'Ordens de Produção', icon: 'ph-clipboard-text' },
+                { id: 'prod_monitoring', label: 'Qual. & Rendimento', icon: 'ph-activity' },
+                { id: 'settings', label: 'Configurações', icon: 'ph-gear' }
             ];
 
             if (loadingAuth) {
                 return (
-                    <div className="h-screen w-full flex flex-col items-center justify-center bg-[#f5f5f4] text-stone-600">
-                        <Loader2 className="animate-spin w-12 h-12 mb-4 text-brand-orange"/>
-                        <p className="font-bold text-lg">Conectando ao Firebase...</p>
-                        <p className="text-sm text-stone-400">A verificar a sua sessão</p>
+                    <div className="h-screen w-full flex flex-col items-center justify-center bg-imac-bg text-gray-600">
+                        <i className="ph ph-spinner animate-spin text-5xl mb-4 text-imac-yellow"></i>
+                        <p className="font-black text-lg">Conectando ao Firebase...</p>
+                        <p className="text-sm text-gray-400 font-bold">A verificar a sua sessão</p>
                     </div>
                 );
             }
@@ -1792,114 +1782,51 @@
             else if (view === 'settings') content = renderSettingsView();
 
             return (
-                <div className="flex h-screen overflow-hidden font-sans text-stone-900 w-full bg-stone-100 selection:bg-brand-orange selection:text-white">
-                    <div className={`fixed inset-0 z-50 flex md:hidden ${isMobileMenuOpen ? '' : 'pointer-events-none'}`}>
-                        <div className={`fixed inset-0 bg-stone-900/60 backdrop-blur-sm transition-opacity duration-300 ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0'}`} onClick={() => setIsMobileMenuOpen(false)}></div>
-                        <aside id="sidebar-root" className={`relative flex w-[280px] max-w-[85vw] flex-col bg-stone-950 transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-2xl ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-                            <div className="flex items-center justify-between px-6 py-6 border-b border-white/5">
-                                <div className="flex items-center gap-3">
-                                    {settings?.logo ? <img src={settings.logo} className="h-10 w-auto rounded-lg bg-white p-1" /> : <div className="p-2.5 bg-brand-orange rounded-xl text-white shadow-lg shadow-orange-500/20"><ChefHat size={22}/></div>}
-                                    <span className="text-lg font-black text-white tracking-wide leading-tight">Fichas Técnicas<br/><span className="text-xs text-stone-400 font-bold tracking-widest uppercase">Custos</span></span>
-                                </div>
-                                <button onClick={() => setIsMobileMenuOpen(false)} className="text-stone-400 hover:text-white transition-colors bg-white/5 p-2 rounded-full"><X size={20} /></button>
-                            </div>
-                            <nav className="flex-1 space-y-1.5 px-4 py-6 overflow-y-auto custom-scroll">
-                                {menuItems.map(item => {
-                                    const isActive = view === item.id || (view === 'catalog_editor' && item.id === 'catalog_list') || (view === 'inv_print' && item.id === 'inventory');
-                                    return (
-                                        <button key={item.id} onClick={() => { setView(item.id); setIsMobileMenuOpen(false); }} className={`flex items-center gap-4 w-full px-4 py-3.5 rounded-2xl transition-all font-bold text-sm outline-none ${isActive ? 'bg-brand-orange text-white shadow-lg shadow-orange-500/20 translate-x-1' : 'text-stone-400 hover:bg-white/5 hover:text-stone-100'}`}>
-                                            <item.icon size={20} className={isActive ? 'text-white' : 'text-stone-500'} strokeWidth={isActive ? 2.5 : 2}/> {item.label}
-                                        </button>
-                                    )
-                                })}
-                            </nav>
-                            <div className="p-6 border-t border-white/5 relative z-10">
-                                <div className="bg-white/5 rounded-2xl p-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        {user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center"><Users size={16} className="text-stone-400"/></div>}
-                                        <div className="flex flex-col text-left">
-                                            <span className="text-xs text-white font-bold truncate max-w-[100px]">{user?.displayName || 'Utilizador'}</span>
-                                            <button onClick={() => signOut(auth)} className="text-[10px] text-stone-500 hover:text-brand-orange transition-colors uppercase font-bold tracking-widest mt-0.5">Terminar Sessão</button>
-                                        </div>
-                                    </div>
-                                    <div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
-                                </div>
-                            </div>
-                        </aside>
-                    </div>
-
-                    <aside id="sidebar-root" className={`hidden md:flex flex-col bg-stone-950 border-r border-stone-800 no-print flex-shrink-0 shadow-2xl z-40 relative transition-all duration-300 ease-in-out ${isSidebarExpanded ? 'w-72' : 'w-20'}`}>
-                        <button 
-                            onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} 
-                            className="absolute -right-3.5 top-10 w-7 h-7 bg-stone-800 border border-stone-700 rounded-full flex items-center justify-center text-stone-400 hover:text-white hover:bg-stone-700 transition-colors z-50 shadow-md"
-                        >
-                            {isSidebarExpanded ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-                        </button>
-
-                        <div className={`flex items-center ${isSidebarExpanded ? 'gap-4 px-8' : 'justify-center px-0'} py-8 border-b border-white/5 relative overflow-hidden h-[100px] flex-shrink-0 transition-all`}>
-                            <div className="absolute -right-12 -top-12 w-32 h-32 bg-brand-orange/10 rounded-full blur-3xl"></div>
-                            {settings?.logo ? (
-                                <img src={settings.logo} className={`w-auto rounded-xl bg-white p-1.5 shadow-lg relative z-10 flex-shrink-0 transition-all ${isSidebarExpanded ? 'h-12' : 'h-8'}`} title={!isSidebarExpanded ? "Fichas Técnicas" : ""} />
-                            ) : (
-                                <div className={`bg-brand-orange rounded-2xl text-white shadow-xl shadow-orange-500/20 relative z-10 flex-shrink-0 flex items-center justify-center transition-all ${isSidebarExpanded ? 'p-3 w-12 h-12' : 'p-2 w-10 h-10'}`} title={!isSidebarExpanded ? "Fichas Técnicas" : ""}>
-                                    <ChefHat size={isSidebarExpanded ? 26 : 20} strokeWidth={2.5}/>
-                                </div>
-                            )}
-                            {isSidebarExpanded && (
-                                <div className="relative z-10 whitespace-nowrap animate-fade-in overflow-hidden">
-                                    <span className="text-xl font-black text-white tracking-wide leading-none block mb-1 truncate">Fichas Técnicas</span>
-                                    <span className="text-[10px] text-brand-orange font-black tracking-widest uppercase truncate">Sistema de Custos</span>
-                                </div>
-                            )}
+                <div className="flex flex-col h-screen overflow-hidden font-sans text-gray-800 bg-imac-bg selection:bg-imac-yellow selection:text-white">
+                    
+                    {/* Barra Superior IMAC (Padrão) */}
+                    <header className="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-6 md:px-10 flex-shrink-0 z-20 shadow-sm no-print">
+                        <div className="flex items-center gap-4">
+                            <img src="CARINHA AMARELO E IMAC AZUL.png" alt="IMAC Logo" className="h-8 md:h-10 w-auto" onError={(e)=>e.target.src='https://placehold.co/120x40/ffffff/104ea2?text=IMAC+Logo'} />
+                            <h1 className="text-xl md:text-2xl font-black text-imac-text tracking-tight hidden sm:block">Fichas Técnicas / Custos</h1>
                         </div>
-                        <nav className={`flex-1 space-y-2 py-8 overflow-y-auto custom-scroll relative z-10 transition-all ${isSidebarExpanded ? 'px-5' : 'px-3'}`}>
-                            {menuItems.map(item => {
-                                const isActive = view === item.id || (view === 'catalog_editor' && item.id === 'catalog_list') || (view === 'inv_print' && item.id === 'inventory');
-                                return (
-                                    <button key={item.id} onClick={() => setView(item.id)} title={!isSidebarExpanded ? item.label : ""} className={`flex items-center w-full py-4 rounded-2xl transition-all font-bold outline-none group ${isSidebarExpanded ? 'px-5 gap-4 justify-start' : 'px-0 justify-center'} ${isActive ? 'bg-brand-orange text-white shadow-xl shadow-orange-500/20 scale-[1.02]' : 'text-stone-400 hover:bg-white/5 hover:text-stone-100'}`}>
-                                        <item.icon size={22} className={`transition-transform duration-300 flex-shrink-0 ${isActive ? 'text-white scale-110' : 'text-stone-500 group-hover:scale-110'}`} strokeWidth={isActive ? 2.5 : 2}/> 
-                                        {isSidebarExpanded && <span className="whitespace-nowrap animate-fade-in">{item.label}</span>}
-                                    </button>
-                                )
-                            })}
-                        </nav>
-                        <div className={`py-6 border-t border-white/5 relative z-10 transition-all ${isSidebarExpanded ? 'px-6' : 'px-3'}`}>
-                            <div className={`bg-white/5 rounded-2xl p-4 flex items-center ${isSidebarExpanded ? 'justify-between' : 'flex-col gap-3 justify-center'}`}>
-                                {isSidebarExpanded ? (
-                                    <>
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            {user?.photoURL ? <img src={user.photoURL} className="w-8 h-8 rounded-full flex-shrink-0" /> : <div className="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center flex-shrink-0"><Users size={16} className="text-stone-400"/></div>}
-                                            <div className="flex flex-col text-left overflow-hidden">
-                                                <span className="text-xs text-white font-bold truncate max-w-[120px]">{user?.displayName || 'Utilizador'}</span>
-                                                <button onClick={() => signOut(auth)} className="text-[10px] text-stone-500 hover:text-brand-orange transition-colors uppercase font-bold tracking-widest mt-0.5 flex items-center gap-1 w-max"><LogOut size={10}/> Terminar Sessão</button>
-                                            </div>
-                                        </div>
-                                        <div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.8)] flex-shrink-0"></div>
-                                    </>
-                                ) : (
-                                    <>
-                                        {user?.photoURL ? <img src={user.photoURL} title={user?.displayName || 'Utilizador'} className="w-8 h-8 rounded-full flex-shrink-0" /> : <div title={user?.displayName || 'Utilizador'} className="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center flex-shrink-0"><Users size={16} className="text-stone-400"/></div>}
-                                        <button onClick={() => signOut(auth)} title="Terminar Sessão" className="text-stone-500 hover:text-brand-orange transition-colors p-1"><LogOut size={16}/></button>
-                                    </>
-                                )}
-                            </div>
+                        <div className="flex items-center gap-4">
+                            <span className="text-sm font-bold text-gray-500 hidden md:inline-block">{user.displayName || 'Utilizador logado'}</span>
+                            <button onClick={() => signOut(auth)} className="flex items-center gap-2 p-2 px-3 text-sm font-bold text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Sair do Sistema">
+                                <span className="hidden sm:inline">Sair</span>
+                                <i className="ph ph-sign-out text-xl"></i>
+                            </button>
                         </div>
-                    </aside>
+                    </header>
 
-                    <div id="main-content" className="flex-1 flex flex-col min-w-0 bg-[#f5f5f4] relative h-full">
-                        <div className="md:hidden flex items-center justify-between bg-white text-stone-900 px-6 py-4 border-b border-stone-200 shadow-sm z-30 no-print sticky top-0">
-                            <div className="flex items-center gap-3">
-                                {settings?.logo ? <img src={settings.logo} className="h-9 w-auto rounded-lg" /> : <div className="p-2 bg-brand-orange rounded-xl text-white shadow-md shadow-orange-500/20"><ChefHat size={18} strokeWidth={2.5}/></div>}
-                                <span className="font-black text-stone-900 tracking-wide text-lg">Fichas Técnicas</span>
-                            </div>
-                            <button onClick={() => setIsMobileMenuOpen(true)} className="p-2.5 text-stone-600 bg-stone-100 hover:bg-stone-200 rounded-xl transition-colors"><Menu size={20} strokeWidth={2.5} /></button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4 md:p-10 custom-scroll relative">
-                            {content}
-                        </div>
-                    </div>
+                    {/* Navegação Horizontal em Abas */}
+                    <nav className="bg-white border-b border-gray-200 px-6 md:px-10 flex gap-6 overflow-x-auto no-print shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] flex-shrink-0 custom-scroll z-10">
+                        {menuItems.map(item => {
+                            const isActive = view === item.id || (view === 'catalog_editor' && item.id === 'catalog_list') || (view === 'inv_print' && item.id === 'inventory');
+                            return (
+                                <button 
+                                    key={item.id} 
+                                    onClick={() => setView(item.id)}
+                                    className={`py-4 font-black text-sm border-b-2 whitespace-nowrap flex items-center gap-2 transition-colors outline-none
+                                        ${isActive ? 'border-imac-yellow text-imac-yellow' : 'border-transparent text-gray-400 hover:text-imac-text hover:border-gray-200'}`}
+                                >
+                                    <i className={`ph ${item.icon} text-xl`}></i> {item.label}
+                                </button>
+                            )
+                        })}
+                    </nav>
 
-                    {notification && <div className="fixed bottom-6 right-6 bg-stone-900 text-white px-6 py-4 rounded-2xl shadow-2xl shadow-black/20 z-50 animate-slide-in flex items-center gap-4 no-print border border-stone-700 font-bold"><CheckCircle size={22} className="text-emerald-400" strokeWidth={2.5}/>{notification}</div>}
+                    {/* Conteúdo Principal */}
+                    <main className="flex-1 overflow-y-auto p-4 md:p-10 custom-scroll relative z-0">
+                        {content}
+                    </main>
+
+                    {notification && (
+                        <div className="fixed bottom-6 right-6 bg-imac-text text-white px-6 py-4 rounded-2xl shadow-2xl z-50 animate-slide-in flex items-center gap-4 no-print font-bold">
+                            <i className="ph ph-check-circle text-2xl text-emerald-400"></i>
+                            {notification}
+                        </div>
+                    )}
                 </div>
             );
         };
