@@ -107,6 +107,20 @@
             measurementId: "G-X7N1VDYGL5"
         };
         const app = initializeApp(firebaseConfig);
+        
+        const expedioConfig = {
+            apiKey: "AIzaSyDev8spgKoKZi2pOohmk0r9SFLtLMcePa8",
+            authDomain: "estoque-b50df.firebaseapp.com",
+            projectId: "estoque-b50df",
+            storageBucket: "estoque-b50df.firebasestorage.app",
+            messagingSenderId: "634756791567",
+            appId: "1:634756791567:web:993e61243b57b7e057d27a"
+        };
+        const appExpedio = initializeApp(expedioConfig, "expedio");
+        const authExpedio = getAuth(appExpedio);
+        const dbExpedio = getFirestore(appExpedio);
+        const expedioAppId = '1:634756791567:web:993e61243b57b7e057d27a';
+        
         const auth = getAuth(app);
         const db = getFirestore(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'fichasdecusto_app';
@@ -594,7 +608,7 @@
             useEffect(() => {
                 if (!user) return;
 
-                const unsubCat = onSnapshot(collection(db, 'artifacts', appId, 'users', user.uid, 'catalog'),
+                const unsubCat = onSnapshot(collection(dbExpedio, 'artifacts', expedioAppId, 'users', user.uid, 'recipes'),
                     (snapshot) => {
                         const items = [];
                         snapshot.forEach(doc => items.push(doc.data()));
@@ -1078,7 +1092,7 @@
                     p.lastUpdated = new Date().toISOString();
                     
                     if (user) {
-                        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'catalog', p.id), p);
+                        await setDoc(doc(dbExpedio, 'artifacts', expedioAppId, 'users', user.uid, 'recipes', p.id), p);
                     }
                     
                     setView('catalog_list'); notify("Produto salvo com sucesso!");
@@ -1121,7 +1135,7 @@
 
                                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 content-start">
                                     <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Nome do Produto</label><input type="text" value={p.name} onChange={e => updateField('name', e.target.value)} className="w-full p-3 border border-gray-300 rounded-xl outline-none font-black text-gray-800 focus:border-imac-yellow focus:ring-1 focus:ring-yellow-400 transition-all text-lg" placeholder="Ex: Pão Francês Tradicional" /></div>
-                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Linha / Categoria</label><SearchableSelect options={settings?.lines || []} value={p.line} onChange={(val) => updateField('line', val)} /></div>
+                                    <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Linha / Categoria</label><SearchableSelect options={settings?.lines || []} value={p.category} onChange={(val) => updateField('category', val)} /></div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Formato de Venda</label>
                                         <select value={p.outputType} onChange={e => updateField('outputType', e.target.value)} className="w-full p-3 border border-gray-300 rounded-xl outline-none focus:border-imac-yellow bg-white text-sm font-bold text-gray-800 transition-all">
