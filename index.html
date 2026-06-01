@@ -608,7 +608,7 @@
             useEffect(() => {
                 if (!user) return;
 
-                const unsubCat = onSnapshot(collection(dbExpedio, 'artifacts', expedioAppId, 'users', user.uid, 'recipes'),
+                const unsubCat = onSnapshot(collection(dbExpedio, 'artifacts', expedioAppId, 'users', (authExpedio.currentUser ? authExpedio.currentUser.uid : user.uid), 'recipes'),
                     (snapshot) => {
                         const items = [];
                         snapshot.forEach(doc => items.push(doc.data()));
@@ -1092,7 +1092,7 @@
                     p.lastUpdated = new Date().toISOString();
                     
                     if (user) {
-                        await setDoc(doc(dbExpedio, 'artifacts', expedioAppId, 'users', user.uid, 'recipes', p.id), p);
+                        await setDoc(doc(dbExpedio, 'artifacts', expedioAppId, 'users', (authExpedio.currentUser ? authExpedio.currentUser.uid : user.uid), 'recipes', p.id), p);
                     }
                     
                     setView('catalog_list'); notify("Produto salvo com sucesso!");
