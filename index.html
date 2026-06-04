@@ -279,7 +279,17 @@
                 if (!isOpen) { setFileType(null); setFileContent(''); setWorkbookData(null); setError(''); setLoading(false); setStats(''); setPreview(null); }
             }, [isOpen]);
 
-            // ── Parser IMAC — lê o formato das fichas de Croissants/Folhados ──
+            // ── Parser IMAC — formato exato das fichas de Croissants/Folhados ──
+            // Estrutura descoberta por inspeção da planilha:
+            //   Col A (0): Etapa mesclada (MASSA, COZIMENTO, RECHEIO, EMBALAGEM…)
+            //              Após TOTAL: metadados (RENDIMENTO, PESO POR PACOTE, etc.)
+            //   Col D (3): Nome do ingrediente
+            //   Col H (7): Quantidade (número)
+            //   Col I (8): Unidade (kg, und…)
+            //   Linha 3 (R03): "Preparação: NOME"
+            //   Linha 4 (R04): "1 UNIDADE: 100G"
+            //   Linha 5 (R05): data | … | RENDIMENTO | valor | KG  (col E=5, H=7)
+            //   Após TOTAL: RENDIMENTO na col A com valor na col H
             const processLocalExcel = (workbook) => {
                 const newProducts = [];
 
@@ -289,156 +299,128 @@
                     const n = parseFloat(s);
                     return isNaN(n) ? 0 : n;
                 };
-
                 const cellStr = (v) => String(v === null || v === undefined ? '' : v).trim();
+
+                // Etapas válidas — qualquer valor de col A que seja uma dessas
+                const ETAPAS = ['MASSA', 'RECHEIO', 'COZIMENTO', 'REFOGADO', 'EMBALAGEM',
+                                'PÉ DE MASSA', 'PE DE MASSA', 'PULVERIZAÇÃO', 'PULVERIZACAO',
+                                'COBERTURA', 'MONTAGEM', 'OUTROS'];
+                const isEtapa = (v) => ETAPAS.some(e => cellStr(v).toUpperCase().includes(e));
 
                 workbook.SheetNames.forEach(sheetName => {
                     const sheet = workbook.Sheets[sheetName];
-                    const rows  = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+                    // Lê com header:1 para ter arrays indexados por posição
+                    const rows  = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
 
-                    // ── Metadados ───────────────────────────────────────────
-                    let recipeName       = sheetName;
-                    let yieldKg          = 0;          // RENDIMENTO
-                    let unitWeightG      = 0;          // ex: 100G → 100
+                    let recipeName        = sheetName;
+                    let yieldKg           = 0;
+                    let unitWeightG       = 0;
                     let unitWeightMeasure = 'g';
-                    let packWeightKg     = 0;          // PESO POR PACOTE
-                    let unitsPerPackage  = 0;          // Pacote com N unidades
-                    let packagesPerBatch = 0;          // X PACOTES POR RECEITA
-                    let totalUnitsPerBatch = 0;        // = N UNIDADES
-                    let ingredients      = [];
+                    let packWeightKg      = 0;
+                    let unitsPerPackage   = 0;
+                    let packagesPerBatch  = 0;
+                    let totalUnitsPerBatch = 0;
+                    let sectionLoss       = {};   // { 'MASSA': 16.7, 'RECHEIO': 28.9 }
+                    const ingredients     = [];
 
-                    // Seção atual e perdas por seção: { MASSA: 16.7, RECHEIO: 28.9 }
-                    let sectionLoss = {};
-                    let currentSection = 'MASSA';
+                    let lastSection = 'MASSA';   // propaga etapa (células mescladas)
+                    let passedTotal = false;       // já passou da linha TOTAL
 
                     for (let i = 0; i < rows.length; i++) {
-                        const row   = rows[i] || [];
-                        const full  = row.map(cellStr).join('\t');
-                        const fullU = full.toUpperCase();
+                        const row  = rows[i] || [];
+                        const colA = cellStr(row[0]);  // etapa / metadado
+                        const colD = cellStr(row[3]);  // ingrediente
+                        const colH = row[7];           // quantidade
+                        const colI = cellStr(row[8]);  // unidade
 
-                        // ── Nome da receita: linha "Preparação: NOME" ───────
-                        if (fullU.includes('PREPARAÇÃO:') || fullU.includes('PREPARACAO:')) {
-                            const m = full.match(/[Pp]repara[çc][aã]o:\s*(.+)/);
-                            if (m) recipeName = m[1].trim().replace(/\t.*/,'');
+                        // ── Nome da receita ─────────────────────────────────
+                        if (colA.startsWith('Preparação:') || colA.startsWith('Preparacao:')) {
+                            recipeName = colA.replace(/Prepara[çc][aã]o:\s*/i, '').trim();
+                            continue;
                         }
 
-                        // ── Peso por unidade: "1 UNIDADE: 70G" ──────────────
-                        if (fullU.includes('UNIDADE:')) {
-                            // "1 UNIDADE: 70G" ou "1 UNIDADE: 100G"
-                            const m = full.match(/1\s+UNIDADE[:\s]+(\d+(?:[.,]\d+)?)\s*(G|KG|g|kg)/i);
-                            if (m) {
-                                unitWeightG       = parseNum(m[1]);
-                                unitWeightMeasure = m[2].toLowerCase();
+                        // ── Peso por unidade: "1 UNIDADE: 100G" ─────────────
+                        if (colA.toUpperCase().includes('UNIDADE:')) {
+                            const m = colA.match(/1\s+UNIDADE[:\s]+(\d+(?:[.,]\d+)?)\s*(G|KG|g|kg)/i);
+                            if (m) { unitWeightG = parseNum(m[1]); unitWeightMeasure = m[2].toLowerCase(); }
+                            continue;
+                        }
+
+                        // ── RENDIMENTO na linha de cabeçalho (col E=5 no raw) ─
+                        // Row 05: A=data | E='RENDIMENTO' | H=formula/valor | I='KG'
+                        if (!passedTotal) {
+                            const col5 = cellStr(row[5]);
+                            if (col5.toUpperCase() === 'RENDIMENTO' && colH) {
+                                const v = parseNum(colH);
+                                if (v > 0) yieldKg = v;
                             }
                         }
 
-                        // ── RENDIMENTO na mesma linha que o valor ────────────
-                        // Formato: célula "RENDIMENTO" depois número depois "KG"
-                        if (fullU.includes('RENDIMENTO')) {
-                            for (let ci = 0; ci < row.length - 1; ci++) {
-                                if (cellStr(row[ci]).toUpperCase() === 'RENDIMENTO') {
-                                    const v = parseNum(row[ci + 1]);
-                                    if (v > 0) {
-                                        yieldKg = v;
-                                        // unidade na célula seguinte
-                                        const u = cellStr(row[ci + 2]).toLowerCase();
-                                        if (u === 'g') yieldKg = v / 1000;
-                                    }
-                                    break;
-                                }
+                        // ── Marcador TOTAL ───────────────────────────────────
+                        if (colA.toUpperCase() === 'TOTAL') { passedTotal = true; continue; }
+
+                        // ── Metadados pós-TOTAL (col A) ──────────────────────
+                        if (passedTotal) {
+                            // RENDIMENTO  (col A = 'RENDIMENTO', valor em col H)
+                            if (colA.toUpperCase() === 'RENDIMENTO') {
+                                const v = parseNum(colH);
+                                if (v > 0) yieldKg = v;
+                                continue;
                             }
-                            // também trata "RENDIMENTO\t\t\t\t\t\t\t8.51\tKG" (col 7)
-                            if (yieldKg === 0) {
-                                const nums = row.map(parseNum).filter(n => n > 0 && n < 999);
-                                if (nums.length > 0) yieldKg = nums[nums.length - 1];
+                            // PESO POR PACOTE: 2 KG
+                            const ppM = colA.match(/PESO\s+POR\s+PACOTE[:\s]+([0-9.,]+)\s*(KG|G|kg|g)/i);
+                            if (ppM) { packWeightKg = parseNum(ppM[1]) * (ppM[2].toLowerCase() === 'g' ? 0.001 : 1); continue; }
+
+                            // X PACOTES POR RECEITA = Y UNIDADES
+                            const prM = colA.match(/([0-9.,]+)\s*PACOTES?\s+POR\s+RECEITA\s*=?\s*([0-9]+)\s*UNIDADES?/i);
+                            if (prM) { packagesPerBatch = parseNum(prM[1]); totalUnitsPerBatch = parseNum(prM[2]); continue; }
+
+                            // Pacote com N unidades
+                            const puM = colA.match(/PACOTE\s+COM\s+(?:m[eé]dia\s+de\s+)?([0-9]+)\s*UNIDADES?/i);
+                            if (puM) { unitsPerPackage = parseNum(puM[1]); continue; }
+
+                            // Perdas: "9,20kg de massa (16,7% perda) + 3,65kg de recheio (28,9% perda)"
+                            const perdaRe = /([0-9.,]+)\s*kg\s+de\s+(\w+)\s*\(([0-9.,]+)%\s*perda\)/gi;
+                            let pm;
+                            while ((pm = perdaRe.exec(colA)) !== null) {
+                                sectionLoss[pm[2].toUpperCase()] = parseNum(pm[3]);
                             }
+                            continue;
                         }
 
-                        // ── PESO POR PACOTE: N KG ────────────────────────────
-                        const ppMatch = full.match(/PESO\s+POR\s+PACOTE[:\s]+([0-9.,]+)\s*(KG|G|kg|g)/i);
-                        if (ppMatch) packWeightKg = parseNum(ppMatch[1]) * (ppMatch[2].toLowerCase() === 'g' ? 0.001 : 1);
+                        // ── Ingredientes (antes do TOTAL) ────────────────────
+                        // Atualiza etapa se col A tiver valor válido
+                        if (colA && isEtapa(colA)) lastSection = colA.trim();
 
-                        // ── X PACOTES POR RECEITA = Y UNIDADES ──────────────
-                        const prMatch = full.match(/([0-9.,]+)\s*PACOTES?\s+POR\s+RECEITA\s*=?\s*([0-9]+)\s*UNIDADES?/i);
-                        if (prMatch) {
-                            packagesPerBatch  = parseNum(prMatch[1]);
-                            totalUnitsPerBatch = parseNum(prMatch[2]);
-                        }
+                        // Nome do ingrediente em col D (idx 3)
+                        const ingName = colD;
+                        if (!ingName || ingName === 'Ingrediente') continue;
 
-                        // ── Pacote com N unidades ────────────────────────────
-                        const puMatch = full.match(/PACOTE\s+COM\s+(?:m[eé]dia\s+de\s+)?([0-9]+)\s*UNIDADES?/i);
-                        if (puMatch) unitsPerPackage = parseNum(puMatch[1]);
+                        const qty = parseNum(colH);
+                        if (qty <= 0) continue;
 
-                        // ── Perdas por etapa: "8,51kg de massa (25,0% perda)" ─
-                        // Formato: "Xkg de ETAPA (Y% perda)"
-                        const perdaRe = /([0-9.,]+)\s*kg\s+de\s+(\w+)\s*\(([0-9.,]+)%\s*perda\)/gi;
-                        let pm;
-                        while ((pm = perdaRe.exec(full)) !== null) {
-                            const sec = pm[2].toUpperCase();
-                            const pct = parseNum(pm[3]);
-                            sectionLoss[sec] = pct;
-                        }
+                        const unit = colI || 'kg';
 
-                        // ── Linhas de ingredientes ───────────────────────────
-                        // Formato: SEÇÃO [tab] [tab] [tab] Ingrediente [tab] [tab] [tab] Marca [tab] Quantidade [tab] unidade
-                        // Col 0: seção (MASSA, RECHEIO, EMBALAGEM, COZIMENTO, etc.) ou vazio
-                        // Col 3: nome do ingrediente
-                        // Col 6: marca (pode ser vazio)
-                        // Col 7: quantidade
-                        // Col 8: unidade (kg, und, etc.)
-                        const col0 = cellStr(row[0]).toUpperCase();
-                        const col1 = cellStr(row[1]).toUpperCase();
-                        const col3 = cellStr(row[3]);
-                        const col7 = row.length > 7 ? cellStr(row[7]) : '';
-                        const col8 = row.length > 8 ? cellStr(row[8]) : '';
-
-                        // Detecta seção (col0 tem texto em maiúsculas como MASSA, RECHEIO…)
-                        const SECTIONS = ['MASSA', 'RECHEIO', 'EMBALAGEM', 'COZIMENTO', 'REFOGADO',
-                                          'PÉ DE MASSA', 'PE DE MASSA', 'PULVERIZAÇÃO', 'PULVERIZACAO', 'COBERTURA', 'MONTAGEM'];
-                        const isSection0 = SECTIONS.some(s => col0.includes(s));
-                        const isSection1 = SECTIONS.some(s => col1.includes(s));
-
-                        const detectedSection = isSection0 ? col0 : (isSection1 ? col1 : null);
-                        if (detectedSection) currentSection = detectedSection;
-
-                        // Ingrediente: col 3 tem nome, col 7 tem quantidade numérica
-                        if (col3 && col3 !== 'Ingrediente' && col3 !== 'ingrediente') {
-                            const qty = parseNum(col7 || col8);
-                            if (qty > 0) {
-                                // unidade: col 8 se col 7 foi qty; ou col 9
-                                let unit = 'kg';
-                                const potUnit = cellStr(row[8] || '').toLowerCase().trim();
-                                const potUnit9 = cellStr(row[9] || '').toLowerCase().trim();
-                                if (['kg','g','l','ml','und','un','unid'].includes(potUnit)) unit = potUnit;
-                                else if (['kg','g','l','ml','und','un','unid'].includes(potUnit9)) unit = potUnit9;
-                                else if (col7 && parseNum(col7) > 0 && col8) unit = cellStr(row[8]).toLowerCase() || 'kg';
-
-                                // Ignora linhas que são totais/rodapé
-                                const nm = col3.toUpperCase();
-                                if (!nm.includes('TOTAL') && !nm.includes('RENDIMENTO')) {
-                                    ingredients.push({
-                                        section: currentSection,
-                                        name:    col3,
-                                        quantity: qty,
-                                        unit:    unit || 'kg',
-                                        unitPrice: 0,
-                                    });
-                                }
-                            }
-                        }
+                        ingredients.push({
+                            section:   lastSection,
+                            name:      ingName,
+                            quantity:  qty,
+                            unit:      unit.toLowerCase(),
+                            unitPrice: 0,
+                        });
                     }
 
                     if (ingredients.length > 0) {
                         newProducts.push({
                             recipeName,
-                            yieldKg: yieldKg || 1,
+                            yieldKg:           yieldKg || 1,
                             unitWeightG,
                             unitWeightMeasure,
                             packWeightKg,
                             unitsPerPackage,
                             packagesPerBatch,
                             totalUnitsPerBatch,
-                            sectionLoss,    // { MASSA: 25.0, RECHEIO: 28.9 }
+                            sectionLoss,
                             ingredients,
                         });
                     }
