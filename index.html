@@ -273,117 +273,177 @@
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
             const [stats, setStats] = useState('');
+            const [preview, setPreview] = useState(null);
 
             useEffect(() => {
-                if (!isOpen) { setFileType(null); setFileContent(''); setWorkbookData(null); setError(''); setLoading(false); setStats(''); }
+                if (!isOpen) { setFileType(null); setFileContent(''); setWorkbookData(null); setError(''); setLoading(false); setStats(''); setPreview(null); }
             }, [isOpen]);
 
+            // ── Parser IMAC — lê o formato das fichas de Croissants/Folhados ──
             const processLocalExcel = (workbook) => {
                 const newProducts = [];
+
+                const parseNum = (v) => {
+                    if (v === null || v === undefined || v === '') return 0;
+                    const s = String(v).replace(',', '.').replace(/[^0-9.eE\-+]/g, '');
+                    const n = parseFloat(s);
+                    return isNaN(n) ? 0 : n;
+                };
+
+                const cellStr = (v) => String(v === null || v === undefined ? '' : v).trim();
+
                 workbook.SheetNames.forEach(sheetName => {
                     const sheet = workbook.Sheets[sheetName];
-                    const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                    
-                    let recipeName = sheetName;
-                    let yieldKg = 1;
-                    let ingredients = [];
-                    
-                    let currentSection = 'Geral';
-                    let inIngredients = false;
-                    let ingIdx = -1, qtyIdx = -1, priceIdx = -1, sectionIdx = 0, unitIdx = -1;
+                    const rows  = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+                    // ── Metadados ───────────────────────────────────────────
+                    let recipeName       = sheetName;
+                    let yieldKg          = 0;          // RENDIMENTO
+                    let unitWeightG      = 0;          // ex: 100G → 100
+                    let unitWeightMeasure = 'g';
+                    let packWeightKg     = 0;          // PESO POR PACOTE
+                    let unitsPerPackage  = 0;          // Pacote com N unidades
+                    let packagesPerBatch = 0;          // X PACOTES POR RECEITA
+                    let totalUnitsPerBatch = 0;        // = N UNIDADES
+                    let ingredients      = [];
+
+                    // Seção atual e perdas por seção: { MASSA: 16.7, RECHEIO: 28.9 }
+                    let sectionLoss = {};
+                    let currentSection = 'MASSA';
 
                     for (let i = 0; i < rows.length; i++) {
-                        const row = rows[i] || [];
-                        if (row.length === 0) continue;
-                        
-                        const joinedRow = row.join(' ').replace(/\s+/g, ' ').trim();
-                        if (!joinedRow) continue;
-                        
-                        if (!inIngredients) {
-                            if (joinedRow.includes('Ficha de Custo -')) {
-                                const match = joinedRow.match(/Ficha de Custo -\s*([^,]+)/);
-                                if (match) recipeName = match[1].trim();
+                        const row   = rows[i] || [];
+                        const full  = row.map(cellStr).join('\t');
+                        const fullU = full.toUpperCase();
+
+                        // ── Nome da receita: linha "Preparação: NOME" ───────
+                        if (fullU.includes('PREPARAÇÃO:') || fullU.includes('PREPARACAO:')) {
+                            const m = full.match(/[Pp]repara[çc][aã]o:\s*(.+)/);
+                            if (m) recipeName = m[1].trim().replace(/\t.*/,'');
+                        }
+
+                        // ── Peso por unidade: "1 UNIDADE: 70G" ──────────────
+                        if (fullU.includes('UNIDADE:')) {
+                            // "1 UNIDADE: 70G" ou "1 UNIDADE: 100G"
+                            const m = full.match(/1\s+UNIDADE[:\s]+(\d+(?:[.,]\d+)?)\s*(G|KG|g|kg)/i);
+                            if (m) {
+                                unitWeightG       = parseNum(m[1]);
+                                unitWeightMeasure = m[2].toLowerCase();
                             }
-                            
-                            if (joinedRow.toLowerCase().includes('rendimento')) {
-                                const rendIdx = row.findIndex(c => typeof c === 'string' && c.toLowerCase().includes('rendimento'));
-                                if (rendIdx !== -1) {
-                                    const valStr = String(row[rendIdx + 1] || row[rendIdx + 2] || '').trim();
-                                    let val = parseFloat(valStr.replace(',', '.'));
-                                    if (!isNaN(val) && val > 0) {
-                                        if (valStr.toLowerCase().includes('g') && !valStr.toLowerCase().includes('kg')) {
-                                            val = val / 1000;
-                                        } else if (row[rendIdx + 2] && String(row[rendIdx + 2]).toLowerCase().trim() === 'g') {
-                                            val = val / 1000;
-                                        }
-                                        yieldKg = val;
+                        }
+
+                        // ── RENDIMENTO na mesma linha que o valor ────────────
+                        // Formato: célula "RENDIMENTO" depois número depois "KG"
+                        if (fullU.includes('RENDIMENTO')) {
+                            for (let ci = 0; ci < row.length - 1; ci++) {
+                                if (cellStr(row[ci]).toUpperCase() === 'RENDIMENTO') {
+                                    const v = parseNum(row[ci + 1]);
+                                    if (v > 0) {
+                                        yieldKg = v;
+                                        // unidade na célula seguinte
+                                        const u = cellStr(row[ci + 2]).toLowerCase();
+                                        if (u === 'g') yieldKg = v / 1000;
                                     }
+                                    break;
                                 }
                             }
-
-                            const headerRow = row.map(c => String(c || '').toLowerCase().trim());
-                            const tempIngIdx = headerRow.findIndex(c => c === 'ingrediente' || c === 'ingredientes' || c.includes('descrição') || c === 'item' || c === 'produto');
-                            const tempQtyIdx = headerRow.findIndex(c => c === 'quantidade' || c === 'qtd' || c === 'peso' || c === 'quant.');
-                            
-                            if (tempIngIdx !== -1 && tempQtyIdx !== -1) {
-                                inIngredients = true;
-                                ingIdx = tempIngIdx;
-                                qtyIdx = tempQtyIdx;
-                                priceIdx = headerRow.findIndex(c => c.includes('preço') || c.includes('preco') || c.includes('custo unit') || c.includes('valor') || c === 'custo (kg)');
-                                unitIdx = headerRow.findIndex(c => c === 'unidade' || c === 'und' || c === 'unid' || c === 'un');
-                                sectionIdx = ingIdx > 0 ? ingIdx - 1 : 0;
+                            // também trata "RENDIMENTO\t\t\t\t\t\t\t8.51\tKG" (col 7)
+                            if (yieldKg === 0) {
+                                const nums = row.map(parseNum).filter(n => n > 0 && n < 999);
+                                if (nums.length > 0) yieldKg = nums[nums.length - 1];
                             }
-                        } else {
-                            const ingName = String(row[ingIdx] || '').trim();
-                            const rawQty = row[qtyIdx];
-                            
-                            if (!ingName && !rawQty) continue;
-                            
-                            const lowerIngName = ingName.toLowerCase();
-                            if (lowerIngName.includes('custo total') || lowerIngName.includes('rendimento') || lowerIngName.includes('lucro') || lowerIngName.includes('observação') || lowerIngName === 'total') {
-                                inIngredients = false; 
-                                continue;
-                            }
+                        }
 
-                            const secVal = String(row[sectionIdx] || '').trim();
-                            if (secVal && secVal !== ingName && !secVal.toLowerCase().includes('total')) {
-                                currentSection = secVal;
-                            }
+                        // ── PESO POR PACOTE: N KG ────────────────────────────
+                        const ppMatch = full.match(/PESO\s+POR\s+PACOTE[:\s]+([0-9.,]+)\s*(KG|G|kg|g)/i);
+                        if (ppMatch) packWeightKg = parseNum(ppMatch[1]) * (ppMatch[2].toLowerCase() === 'g' ? 0.001 : 1);
 
-                            let qty = parseFloat(String(rawQty || '').replace(',', '.'));
-                            if (isNaN(qty)) qty = 0;
+                        // ── X PACOTES POR RECEITA = Y UNIDADES ──────────────
+                        const prMatch = full.match(/([0-9.,]+)\s*PACOTES?\s+POR\s+RECEITA\s*=?\s*([0-9]+)\s*UNIDADES?/i);
+                        if (prMatch) {
+                            packagesPerBatch  = parseNum(prMatch[1]);
+                            totalUnitsPerBatch = parseNum(prMatch[2]);
+                        }
 
-                            let price = 0;
-                            if (priceIdx !== -1) {
-                                let priceStr = String(row[priceIdx] || '').replace(/R\$|\s/g, '').replace(',', '.');
-                                price = parseFloat(priceStr);
-                                if (isNaN(price)) price = 0;
-                            }
+                        // ── Pacote com N unidades ────────────────────────────
+                        const puMatch = full.match(/PACOTE\s+COM\s+(?:m[eé]dia\s+de\s+)?([0-9]+)\s*UNIDADES?/i);
+                        if (puMatch) unitsPerPackage = parseNum(puMatch[1]);
 
-                            let unit = 'kg';
-                            if (unitIdx !== -1 && row[unitIdx]) {
-                                unit = String(row[unitIdx]).trim().toLowerCase();
-                            } else if (row[qtyIdx + 1]) {
-                                unit = String(row[qtyIdx + 1]).trim().toLowerCase(); 
-                            }
-                            if (!unit || unit.length > 5) unit = 'un';
+                        // ── Perdas por etapa: "8,51kg de massa (25,0% perda)" ─
+                        // Formato: "Xkg de ETAPA (Y% perda)"
+                        const perdaRe = /([0-9.,]+)\s*kg\s+de\s+(\w+)\s*\(([0-9.,]+)%\s*perda\)/gi;
+                        let pm;
+                        while ((pm = perdaRe.exec(full)) !== null) {
+                            const sec = pm[2].toUpperCase();
+                            const pct = parseNum(pm[3]);
+                            sectionLoss[sec] = pct;
+                        }
 
-                            if (ingName && qty > 0) {
-                                ingredients.push({
-                                    section: currentSection || 'Geral',
-                                    name: ingName,
-                                    quantity: qty,
-                                    unit: unit,
-                                    unitPrice: price
-                                });
+                        // ── Linhas de ingredientes ───────────────────────────
+                        // Formato: SEÇÃO [tab] [tab] [tab] Ingrediente [tab] [tab] [tab] Marca [tab] Quantidade [tab] unidade
+                        // Col 0: seção (MASSA, RECHEIO, EMBALAGEM, COZIMENTO, etc.) ou vazio
+                        // Col 3: nome do ingrediente
+                        // Col 6: marca (pode ser vazio)
+                        // Col 7: quantidade
+                        // Col 8: unidade (kg, und, etc.)
+                        const col0 = cellStr(row[0]).toUpperCase();
+                        const col1 = cellStr(row[1]).toUpperCase();
+                        const col3 = cellStr(row[3]);
+                        const col7 = row.length > 7 ? cellStr(row[7]) : '';
+                        const col8 = row.length > 8 ? cellStr(row[8]) : '';
+
+                        // Detecta seção (col0 tem texto em maiúsculas como MASSA, RECHEIO…)
+                        const SECTIONS = ['MASSA', 'RECHEIO', 'EMBALAGEM', 'COZIMENTO', 'REFOGADO',
+                                          'PÉ DE MASSA', 'PE DE MASSA', 'PULVERIZAÇÃO', 'PULVERIZACAO', 'COBERTURA', 'MONTAGEM'];
+                        const isSection0 = SECTIONS.some(s => col0.includes(s));
+                        const isSection1 = SECTIONS.some(s => col1.includes(s));
+
+                        const detectedSection = isSection0 ? col0 : (isSection1 ? col1 : null);
+                        if (detectedSection) currentSection = detectedSection;
+
+                        // Ingrediente: col 3 tem nome, col 7 tem quantidade numérica
+                        if (col3 && col3 !== 'Ingrediente' && col3 !== 'ingrediente') {
+                            const qty = parseNum(col7 || col8);
+                            if (qty > 0) {
+                                // unidade: col 8 se col 7 foi qty; ou col 9
+                                let unit = 'kg';
+                                const potUnit = cellStr(row[8] || '').toLowerCase().trim();
+                                const potUnit9 = cellStr(row[9] || '').toLowerCase().trim();
+                                if (['kg','g','l','ml','und','un','unid'].includes(potUnit)) unit = potUnit;
+                                else if (['kg','g','l','ml','und','un','unid'].includes(potUnit9)) unit = potUnit9;
+                                else if (col7 && parseNum(col7) > 0 && col8) unit = cellStr(row[8]).toLowerCase() || 'kg';
+
+                                // Ignora linhas que são totais/rodapé
+                                const nm = col3.toUpperCase();
+                                if (!nm.includes('TOTAL') && !nm.includes('RENDIMENTO')) {
+                                    ingredients.push({
+                                        section: currentSection,
+                                        name:    col3,
+                                        quantity: qty,
+                                        unit:    unit || 'kg',
+                                        unitPrice: 0,
+                                    });
+                                }
                             }
                         }
                     }
-                    
+
                     if (ingredients.length > 0) {
-                        newProducts.push({ recipeName, yieldKg, ingredients });
+                        newProducts.push({
+                            recipeName,
+                            yieldKg: yieldKg || 1,
+                            unitWeightG,
+                            unitWeightMeasure,
+                            packWeightKg,
+                            unitsPerPackage,
+                            packagesPerBatch,
+                            totalUnitsPerBatch,
+                            sectionLoss,    // { MASSA: 25.0, RECHEIO: 28.9 }
+                            ingredients,
+                        });
                     }
                 });
+
                 return { products: newProducts };
             };
 
@@ -438,12 +498,13 @@
                 try {
                     const result = processLocalExcel(workbookData);
                     if (!result.products || result.products.length === 0) {
-                        throw new Error("O sistema não conseguiu identificar o formato dos ingredientes na planilha. Verifique se as colunas 'Ingrediente' e 'Quantidade' existem.");
+                        throw new Error("Nenhuma receita identificada. Verifique se a planilha segue o formato IMAC (com colunas Seção, Ingrediente, Quantidade).");
                     }
-                    onProcess(result);
+                    // Mostra preview antes de confirmar
+                    setPreview(result);
+                    setLoading(false);
                 } catch (err) {
-                    setError(err.message || "Erro ao processar o ficheiro. Verifique o formato.");
-                } finally {
+                    setError(err.message || "Erro ao processar o ficheiro.");
                     setLoading(false);
                 }
             };
@@ -452,37 +513,98 @@
 
             return (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4 animate-fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] border border-gray-100">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] border border-gray-100">
                         <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-                            <h3 className="font-black text-lg flex items-center gap-2 text-imac-text"><i className="ph ph-file-xls text-imac-yellow text-xl"></i> Importação de Planilhas</h3>
+                            <h3 className="font-black text-lg flex items-center gap-2 text-imac-text">
+                                <i className="ph ph-file-xls text-imac-yellow text-xl"></i>
+                                {preview ? `${preview.products.length} receita(s) encontrada(s)` : 'Importar Fichas Técnicas'}
+                            </h3>
                             <button onClick={onClose} disabled={loading} className="text-gray-400 hover:text-gray-600 transition-colors"><i className="ph ph-x text-xl"></i></button>
                         </div>
-                        <div className="p-6 overflow-y-auto custom-scroll">
-                            <p className="text-sm text-gray-500 mb-4 font-medium">Selecione <strong>uma ou várias Planilhas (Excel/CSV)</strong>. O sistema vai extrair as receitas em lote, alimentar o seu catálogo e criar os itens no estoque instantaneamente!</p>
-                            
-                            {!fileType ? (
-                                <div className="relative">
-                                    <input type="file" accept=".xlsx, .xls, .csv" multiple className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" onChange={handleFile} />
-                                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 hover:border-imac-yellow transition-colors relative z-10 text-center">
-                                        <i className="ph ph-upload-simple text-3xl mb-2 text-imac-yellow"></i>
-                                        <span className="font-bold text-gray-700">Clique para enviar Ficheiro(s)</span>
-                                        <span className="text-xs text-gray-400 mt-1 font-medium">Suporta: Múltiplos Excels (.xlsx), CSV</span>
-                                    </div>
-                                </div>
+
+                        <div className="p-6 overflow-y-auto custom-scroll flex-1">
+                            {!preview ? (
+                                <>
+                                    <p className="text-sm text-gray-500 mb-4 font-medium">Envie a planilha de fichas técnicas no <strong>formato IMAC</strong> (Croissants, Folhados e similares). Cada aba = uma receita.</p>
+                                    {!fileType ? (
+                                        <div className="relative">
+                                            <input type="file" accept=".xlsx, .xls, .csv" multiple className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20" onChange={handleFile} />
+                                            <div className="border-2 border-dashed border-gray-300 rounded-xl p-10 flex flex-col items-center justify-center text-gray-400 hover:bg-gray-50 hover:border-imac-yellow transition-colors relative z-10 text-center gap-2">
+                                                <i className="ph ph-upload-simple text-4xl text-imac-yellow"></i>
+                                                <span className="font-bold text-gray-700 text-base">Clique para enviar Ficheiro(s)</span>
+                                                <span className="text-xs text-gray-400 font-medium">Suporta: Excel (.xlsx, .xls) e CSV</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-xl p-6 border border-emerald-200 bg-emerald-50 flex flex-col items-center text-center gap-2">
+                                            <i className="ph ph-file-xls text-5xl text-emerald-600"></i>
+                                            <p className="font-bold text-gray-800">{stats}</p>
+                                            {!loading && <button onClick={() => setFileType(null)} className="mt-2 text-xs font-bold text-red-500 hover:underline">Cancelar e escolher outro ficheiro</button>}
+                                        </div>
+                                    )}
+                                    {error && <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm font-bold rounded-lg border border-red-100"><i className="ph ph-warning-circle mr-2"></i>{error}</div>}
+                                </>
                             ) : (
-                                <div className="relative rounded-xl p-6 border border-gray-200 bg-gray-50 flex flex-col items-center text-center">
-                                    <i className="ph ph-file-xls text-5xl text-green-600 mb-3"></i>
-                                    <p className="font-bold text-gray-800">{stats}</p>
-                                    {!loading && <button onClick={() => setFileType(null)} className="mt-4 text-xs font-bold text-red-500 hover:underline">Cancelar e escolher outro ficheiro</button>}
+                                <div className="space-y-3">
+                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Pré-visualização — confirme antes de importar:</p>
+                                    {preview.products.map((p, idx) => (
+                                        <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                                            {/* Header da receita */}
+                                            <div className="bg-imac-text text-white px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
+                                                <div>
+                                                    <span className="font-black text-base">{p.recipeName}</span>
+                                                    <div className="flex gap-3 mt-1 flex-wrap">
+                                                        {p.yieldKg > 0 && <span className="text-xs font-bold bg-white/15 px-2 py-0.5 rounded"><i className="ph ph-scales mr-1"></i>Rend.: {p.yieldKg} kg</span>}
+                                                        {p.unitWeightG > 0 && <span className="text-xs font-bold bg-imac-yellow/80 px-2 py-0.5 rounded">1 un = {p.unitWeightG}{p.unitWeightMeasure}</span>}
+                                                        {p.totalUnitsPerBatch > 0 && <span className="text-xs font-bold bg-white/15 px-2 py-0.5 rounded">{p.totalUnitsPerBatch} un/receita</span>}
+                                                        {p.unitsPerPackage > 0 && <span className="text-xs font-bold bg-white/15 px-2 py-0.5 rounded">{p.unitsPerPackage} un/pacote</span>}
+                                                    </div>
+                                                </div>
+                                                {Object.keys(p.sectionLoss||{}).length > 0 && (
+                                                    <div className="text-right">
+                                                        {Object.entries(p.sectionLoss).map(([s,v]) => (
+                                                            <div key={s} className="text-xs font-bold text-yellow-300">{s}: {v}% perda</div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {/* Ingredientes agrupados por seção */}
+                                            <div className="p-3 bg-white">
+                                                {[...new Set(p.ingredients.map(i => i.section))].map(sec => (
+                                                    <div key={sec} className="mb-2 last:mb-0">
+                                                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1 mb-1">{sec}</div>
+                                                        <div className="grid grid-cols-2 gap-1">
+                                                            {p.ingredients.filter(i => i.section === sec).map((ing, j) => (
+                                                                <div key={j} className="flex justify-between text-xs px-2 py-1 bg-gray-50 rounded-lg border border-gray-100">
+                                                                    <span className="font-bold text-gray-700 truncate mr-2">{ing.name}</span>
+                                                                    <span className="font-black text-gray-900 whitespace-nowrap">{ing.quantity} {ing.unit}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
-
-                            {error && <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm font-bold rounded-lg border border-red-100">{error}</div>}
                         </div>
-                        <div className="p-4 border-t bg-gray-50">
-                            <Button onClick={processData} disabled={!fileType || loading} variant="brand" className="w-full h-12 text-base">
-                                {loading ? <><i className="ph ph-spinner animate-spin text-xl"></i> Extraindo Dados...</> : 'Processar e Importar Produtos'}
-                            </Button>
+
+                        <div className="p-4 border-t bg-gray-50 flex gap-3">
+                            {preview ? (
+                                <>
+                                    <Button variant="secondary" onClick={() => setPreview(null)} className="flex-1">
+                                        <i className="ph ph-arrow-left text-lg"></i> Voltar
+                                    </Button>
+                                    <Button onClick={() => onProcess(preview)} variant="brand" className="flex-1 h-12 text-base">
+                                        <i className="ph ph-check-circle text-xl"></i> Confirmar e Importar {preview.products.length} receita(s)
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button onClick={processData} disabled={!fileType || loading} variant="brand" className="w-full h-12 text-base">
+                                    {loading ? <><i className="ph ph-spinner animate-spin text-xl"></i> Lendo planilha...</> : <><i className="ph ph-magnifying-glass text-xl"></i> Analisar Planilha</>}
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -938,35 +1060,84 @@
                 productsToProcess.forEach(prodData => {
                     (prodData.ingredients || []).forEach(ing => {
                         if (!ing.name) return;
-                        
-                        let invItem = finalIngredientsList.find(i => i.name.toLowerCase().trim() === ing.name.toLowerCase().trim());
-                        
+                        // Vincula ao estoque: busca por nome (case-insensitive) ou cria novo
+                        let invItem = finalIngredientsList.find(i =>
+                            i.name.toLowerCase().trim() === ing.name.toLowerCase().trim()
+                        );
                         if (!invItem) {
                             invItem = { id: generateId(), code: '', name: ing.name, price: safeVal(ing.unitPrice), unit: ing.unit || 'kg' };
                             finalIngredientsList.push(invItem);
                         } else if (safeVal(ing.unitPrice) > 0) {
                             invItem.price = safeVal(ing.unitPrice);
                         }
-                        
                         ing.ingredientId = invItem.id;
                     });
                 });
 
                 const newProducts = [];
                 productsToProcess.forEach(prodData => {
+                    // ── Monta seções com % de perda do Excel ──────────────
+                    // prodData.sectionLoss = { MASSA: 25.0, RECHEIO: 28.9 }
+                    const sectionLoss = prodData.sectionLoss || {};
+                    // Mapeia seções reais usadas nos ingredientes
+                    const usedSections = [...new Set((prodData.ingredients || []).map(i => i.section || 'MASSA'))];
+                    const sectionsObj = {};
+                    usedSections.forEach(s => {
+                        // Procura perda pelo nome da seção (ex: "MASSA" ou "RECHEIO")
+                        const lossKey = Object.keys(sectionLoss).find(k =>
+                            s.toUpperCase().includes(k) || k.includes(s.toUpperCase())
+                        );
+                        sectionsObj[s] = {
+                            processLossPct: lossKey ? sectionLoss[lossKey] : 0,
+                            tolerancePct: 5
+                        };
+                    });
+
+                    // ── Formato de saída: unidade ou kg ───────────────────
+                    const hasUnitWeight = (prodData.unitWeightG || 0) > 0;
+                    const outputType    = hasUnitWeight ? 'unit' : 'kg';
+                    const outputWeight  = prodData.unitWeightG || 0;
+                    const outputMeasure = prodData.unitWeightMeasure || 'g';
+
+                    // ── Ingredientes ligados ao estoque ───────────────────
                     const recipeIngs = (prodData.ingredients || []).map(ing => ({
-                        id: generateId(), name: ing.name, qty: safeVal(ing.quantity), unit: ing.unit || 'kg', cost: safeVal(ing.unitPrice), section: ing.section || settings?.stages?.[0] || 'Massa', fixedQty: 0, ingredientId: ing.ingredientId 
+                        id:           generateId(),
+                        name:         ing.name,
+                        qty:          safeVal(ing.quantity),
+                        unit:         ing.unit || 'kg',
+                        cost:         safeVal(ing.unitPrice),
+                        section:      ing.section || usedSections[0] || 'MASSA',
+                        fixedQty:     0,
+                        ingredientId: ing.ingredientId,
                     })).filter(i => i.name);
 
                     const defaults = (settings?.defaultIndirectCosts || []).map(d => ({ ...d, id: generateId() }));
 
+                    // ── Monta descrição rica com info de pacote ───────────
+                    let desc = '';
+                    if (prodData.packWeightKg)     desc += `Peso por pacote: ${prodData.packWeightKg} kg | `;
+                    if (prodData.unitsPerPackage)  desc += `${prodData.unitsPerPackage} un/pacote | `;
+                    if (prodData.packagesPerBatch) desc += `${prodData.packagesPerBatch} pacotes/receita`;
+                    if (prodData.totalUnitsPerBatch) desc += ` = ${prodData.totalUnitsPerBatch} unidades`;
+
                     newProducts.push({
                         ...INITIAL_PRODUCT,
-                        id: generateId(),
-                        name: prodData.recipeName || 'Receita Importada',
-                        yieldUnit: prodData.yieldKg || 1, 
-                        ingredients: recipeIngs,
-                        indirectItems: defaults
+                        id:               generateId(),
+                        name:             prodData.recipeName || 'Receita Importada',
+                        description:      desc.trim(),
+                        outputType,
+                        outputUnitWeight: outputWeight,
+                        outputUnitMeasure: outputMeasure,
+                        yieldUnit:        prodData.yieldKg || 1,
+                        sections:         Object.keys(sectionsObj).length > 0 ? sectionsObj : INITIAL_PRODUCT.sections,
+                        ingredients:      recipeIngs,
+                        indirectItems:    defaults,
+                        // campos extras para referência
+                        packWeightKg:        prodData.packWeightKg || 0,
+                        unitsPerPackage:     prodData.unitsPerPackage || 0,
+                        packagesPerBatch:    prodData.packagesPerBatch || 0,
+                        totalUnitsPerBatch:  prodData.totalUnitsPerBatch || 0,
+                        lastUpdated:         new Date().toISOString(),
                     });
                 });
 
