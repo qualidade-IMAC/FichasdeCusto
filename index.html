@@ -1127,12 +1127,23 @@
 
                 if (user) {
                     try {
-                        const batch = writeBatch(db);
-                        newProducts.forEach(p => batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'catalog', p.id), p));
-                        finalIngredientsList.forEach(ing => batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ing.id), ing, { merge: true }));
-                        await batch.commit();
+                        const expedioUid = authExpedio.currentUser ? authExpedio.currentUser.uid : user.uid;
+                        // Receitas → dbExpedio (mesmo Firebase onde o catálogo é lido)
+                        const batchRecipes = writeBatch(dbExpedio);
+                        newProducts.forEach(p => batchRecipes.set(
+                            doc(dbExpedio, 'artifacts', expedioAppId, 'users', expedioUid, 'recipes', p.id), p
+                        ));
+                        await batchRecipes.commit();
+
+                        // Insumos → db principal
+                        const batchIngs = writeBatch(db);
+                        finalIngredientsList.forEach(ing => batchIngs.set(
+                            doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ing.id), ing, { merge: true }
+                        ));
+                        await batchIngs.commit();
                     } catch (e) {
                         console.error("Batch write error:", e);
+                        notify("Erro ao salvar no Firebase: " + e.message);
                     }
                 }
 
