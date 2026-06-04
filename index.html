@@ -675,6 +675,124 @@
             const [setNewEmployee, setSetNewEmployee] = useState({ name: '', salary: '', hoursMonth: 220 });
             const [setNewIndirect, setSetNewIndirect] = useState({ name: '', cost: '', type: '%' });
 
+            // ── WinThor Integration ──────────────────────────────────────────
+            const [wtBridgeUrl, setWtBridgeUrl] = useState(() => localStorage.getItem('wt_bridge_url') || 'http://localhost:3099');
+            const [wtSyncing, setWtSyncing] = useState(false);
+            const [wtLastSync, setWtLastSync] = useState(() => localStorage.getItem('wt_last_sync') || null);
+            const [wtSyncResult, setWtSyncResult] = useState(null);
+            const [wtPanelOpen, setWtPanelOpen] = useState(false);
+            const [wtSearching, setWtSearching] = useState(false);
+            const [wtSearchResults, setWtSearchResults] = useState([]);
+            const [wtSearchTerm, setWtSearchTerm] = useState('');
+            const [wtCostType, setWtCostType] = useState(() => localStorage.getItem('wt_cost_type') || 'custo_recomendado');
+
+            const saveWtUrl = (url) => {
+                setWtBridgeUrl(url);
+                localStorage.setItem('wt_bridge_url', url);
+            };
+            const saveWtCostType = (type) => {
+                setWtCostType(type);
+                localStorage.setItem('wt_cost_type', type);
+            };
+
+            // Testa conexão com o Bridge
+            const wtTestConnection = async () => {
+                try {
+                    const r = await fetch(`${wtBridgeUrl}/health`, { signal: AbortSignal.timeout(5000) });
+                    const d = await r.json();
+                    if (d.ok) { notify('✅ Conexão com WinThor Bridge OK!'); return true; }
+                } catch {
+                    notify('❌ Não foi possível conectar ao WinThor Bridge. Verifique se o servidor está rodando.');
+                }
+                return false;
+            };
+
+            // Busca matérias-primas no WinThor
+            const wtSearch = async () => {
+                if (!wtSearchTerm.trim()) return;
+                setWtSearching(true);
+                setWtSearchResults([]);
+                try {
+                    const url = `${wtBridgeUrl}/api/materias-primas?busca=${encodeURIComponent(wtSearchTerm)}`;
+                    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+                    const d = await r.json();
+                    if (d.ok) setWtSearchResults(d.dados || []);
+                    else notify('Erro na busca: ' + d.erro);
+                } catch (e) {
+                    notify('Erro ao buscar no WinThor: ' + e.message);
+                } finally {
+                    setWtSearching(false);
+                }
+            };
+
+            // Vincula produto WinThor a um insumo do sistema
+            const wtLinkIngredient = async (ingId, wtProd) => {
+                if (!user) return;
+                const updates = {
+                    code: String(wtProd.codprod),
+                    price: Number(wtProd[wtCostType]) || Number(wtProd.custo_recomendado),
+                    unit: wtProd.unidade || 'kg',
+                    wt_codprod: wtProd.codprod,
+                    wt_descricao: wtProd.descricao,
+                };
+                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ingId), updates, { merge: true });
+                setIngredients(prev => prev.map(i => i.id === ingId ? { ...i, ...updates } : i));
+                notify(`✅ Vinculado: ${wtProd.descricao}`);
+            };
+
+            // Sincroniza TODOS os insumos que têm código WinThor (wt_codprod)
+            const wtSyncAll = async () => {
+                const comCodigo = ingredients.filter(i => i.wt_codprod || (i.code && !isNaN(Number(i.code)) && Number(i.code) > 0));
+                if (comCodigo.length === 0) {
+                    notify('Nenhum insumo vinculado ao WinThor. Use a busca para vincular.');
+                    return;
+                }
+                setWtSyncing(true);
+                setWtSyncResult(null);
+                try {
+                    const itens = comCodigo.map(i => ({
+                        ingredienteId: i.id,
+                        codprod: i.wt_codprod || Number(i.code),
+                    }));
+                    const r = await fetch(`${wtBridgeUrl}/api/sincronizar`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ itens }),
+                        signal: AbortSignal.timeout(30000),
+                    });
+                    const d = await r.json();
+                    if (!d.ok) throw new Error(d.erro);
+
+                    // Atualiza Firestore em batch
+                    if (user) {
+                        const batch = writeBatch(db);
+                        d.resultado.filter(x => x.encontrado).forEach(x => {
+                            const novoPreco = Number(x[wtCostType]) || Number(x.custo_recomendado) || 0;
+                            if (novoPreco > 0) {
+                                batch.set(
+                                    doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', x.ingredienteId),
+                                    { price: novoPreco, wt_ultimo_custo: novoPreco, wt_ultima_sync: new Date().toISOString() },
+                                    { merge: true }
+                                );
+                                setIngredients(prev => prev.map(i => i.id === x.ingredienteId ? { ...i, price: novoPreco } : i));
+                            }
+                        });
+                        await batch.commit();
+                    }
+
+                    const now = new Date().toLocaleString('pt-BR');
+                    setWtLastSync(now);
+                    localStorage.setItem('wt_last_sync', now);
+                    setWtSyncResult({ atualizados: d.atualizados, total: d.total, resultado: d.resultado });
+                    notify(`✅ ${d.atualizados} de ${d.total} insumos atualizados com custos do WinThor!`);
+                } catch (e) {
+                    notify('❌ Erro na sincronização: ' + e.message);
+                } finally {
+                    setWtSyncing(false);
+                }
+            };
+            // ── Fim WinThor Integration ──────────────────────────────────────
+
             // Sincronização Segura
             const pLength = editingProduct?.ingredients?.length || 0;
             useEffect(() => {
@@ -1454,8 +1572,129 @@
                                             <input type="text" placeholder="Pesquisa Inteligente (Nome ou Cód)..." value={invSearch} onChange={e=>setInvSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm rounded-xl bg-white border-0 outline-none focus:ring-2 focus:ring-imac-yellow font-bold"/>
                                         </div>
                                         <button onClick={() => setView('inv_print')} className="bg-white/10 hover:bg-white/20 border border-white/10 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors" title="Imprimir Base de Dados"><i className="ph ph-file-arrow-down text-lg"></i> Ficha TI</button>
+                                        <button onClick={() => setWtPanelOpen(v => !v)} className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border ${wtPanelOpen ? 'bg-imac-yellow text-white border-imac-yellow' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'}`} title="Sincronizar com WinThor">
+                                            <i className="ph ph-plugs-connected text-lg"></i> WinThor
+                                        </button>
                                     </div>
                                 </div>
+
+                                {/* ── PAINEL WINTHOR ── */}
+                                {wtPanelOpen && (
+                                    <div className="bg-gradient-to-br from-blue-950 to-blue-900 border-b border-blue-800 p-5 animate-fade-in">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-8 h-8 rounded-lg bg-imac-yellow flex items-center justify-center flex-shrink-0"><i className="ph ph-plugs-connected text-white text-lg"></i></div>
+                                            <div>
+                                                <h4 className="font-black text-white text-sm tracking-wide">Integração WinThor — Custos de Matéria-Prima</h4>
+                                                <p className="text-blue-300 text-xs font-medium">Busca e sincroniza custos direto do banco Oracle via WinThor Bridge</p>
+                                            </div>
+                                            {wtLastSync && <span className="ml-auto text-[10px] font-bold text-blue-400 text-right hidden md:block">Última sync:<br/>{wtLastSync}</span>}
+                                        </div>
+
+                                        {/* URL e tipo de custo */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                                            <div className="md:col-span-2">
+                                                <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1.5">URL do WinThor Bridge</label>
+                                                <div className="flex gap-2">
+                                                    <input value={wtBridgeUrl} onChange={e=>saveWtUrl(e.target.value)} className="flex-1 px-3 py-2.5 rounded-xl bg-white/10 border border-blue-700 text-white text-sm font-mono outline-none focus:border-imac-yellow transition-colors" placeholder="http://192.168.0.10:3099" />
+                                                    <button onClick={wtTestConnection} className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-colors whitespace-nowrap border border-blue-600"><i className="ph ph-wifi-high mr-1"></i>Testar</button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1.5">Tipo de Custo a Usar</label>
+                                                <select value={wtCostType} onChange={e=>saveWtCostType(e.target.value)} className="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-blue-700 text-white text-sm font-bold outline-none focus:border-imac-yellow transition-colors">
+                                                    <option value="custo_recomendado">Recomendado (Real ou Médio)</option>
+                                                    <option value="custo_real">Custo Real</option>
+                                                    <option value="custo_medio">Custo Médio (CUSTOFIN)</option>
+                                                    <option value="custo_reposicao">Custo de Reposição</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Busca de produto WinThor */}
+                                        <div className="bg-white/5 border border-blue-800 rounded-xl p-4 mb-4">
+                                            <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Buscar Matéria-Prima no WinThor para Vincular</label>
+                                            <div className="flex gap-2 mb-3">
+                                                <input value={wtSearchTerm} onChange={e=>setWtSearchTerm(e.target.value)} onKeyDown={e=>e.key==='Enter'&&wtSearch()} placeholder="Ex: Farinha, Açúcar, Margarina..." className="flex-1 px-3 py-2.5 rounded-xl bg-white/10 border border-blue-700 text-white text-sm font-bold outline-none focus:border-imac-yellow placeholder-blue-500 transition-colors" />
+                                                <button onClick={wtSearch} disabled={wtSearching} className="px-5 py-2.5 bg-imac-yellow hover:opacity-90 text-white rounded-xl text-sm font-bold disabled:opacity-50 transition-all flex items-center gap-2">
+                                                    {wtSearching ? <><i className="ph ph-spinner animate-spin"></i> Buscando...</> : <><i className="ph ph-magnifying-glass"></i> Buscar</>}
+                                                </button>
+                                            </div>
+                                            {wtSearchResults.length > 0 && (
+                                                <div className="max-h-52 overflow-y-auto custom-scroll space-y-1.5">
+                                                    {wtSearchResults.map(prod => (
+                                                        <div key={prod.codprod} className="flex items-center justify-between bg-white/10 hover:bg-white/15 rounded-xl px-4 py-3 transition-colors group">
+                                                            <div className="flex-1 min-w-0 mr-3">
+                                                                <p className="font-black text-white text-sm truncate">{prod.descricao}</p>
+                                                                <div className="flex gap-3 mt-0.5">
+                                                                    <span className="text-blue-300 text-xs font-mono">#{prod.codprod}</span>
+                                                                    <span className="text-blue-400 text-xs font-bold">{prod.unidade}</span>
+                                                                    <span className="text-imac-yellow text-xs font-black">R$ {(prod[wtCostType]||prod.custo_recomendado||0).toFixed(2)}</span>
+                                                                    {prod.estoque_atual > 0 && <span className="text-emerald-400 text-xs font-bold">Est: {prod.estoque_atual.toFixed(2)}</span>}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex gap-2 flex-shrink-0">
+                                                                <select className="text-xs bg-blue-800 text-white border border-blue-700 rounded-lg px-2 py-1.5 outline-none font-bold" id={`sel-${prod.codprod}`} defaultValue="">
+                                                                    <option value="" disabled>Vincular a...</option>
+                                                                    {ingredients.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                                                </select>
+                                                                <button onClick={() => {
+                                                                    const sel = document.getElementById(`sel-${prod.codprod}`);
+                                                                    if (!sel.value) { notify('Selecione um insumo para vincular.'); return; }
+                                                                    wtLinkIngredient(sel.value, prod);
+                                                                }} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black transition-colors whitespace-nowrap">
+                                                                    <i className="ph ph-link mr-1"></i>Vincular
+                                                                </button>
+                                                                <button onClick={() => {
+                                                                    const newIng = {
+                                                                        id: generateId(),
+                                                                        code: String(prod.codprod),
+                                                                        name: prod.descricao,
+                                                                        price: Number(prod[wtCostType]||prod.custo_recomendado||0),
+                                                                        unit: prod.unidade || 'kg',
+                                                                        wt_codprod: prod.codprod,
+                                                                        wt_descricao: prod.descricao,
+                                                                    };
+                                                                    if (user) setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', newIng.id), newIng);
+                                                                    setIngredients(prev => [...prev, newIng]);
+                                                                    notify(`✅ Insumo "${prod.descricao}" adicionado ao estoque!`);
+                                                                }} className="px-3 py-1.5 bg-imac-yellow hover:opacity-90 text-white rounded-lg text-xs font-black transition-colors whitespace-nowrap">
+                                                                    <i className="ph ph-plus mr-1"></i>Adicionar
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {wtSearchResults.length === 0 && !wtSearching && wtSearchTerm && <p className="text-blue-400 text-sm font-bold text-center py-4">Nenhum resultado. Verifique a conexão e os filtros no servidor.</p>}
+                                        </div>
+
+                                        {/* Botão sincronizar todos */}
+                                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                                            <div className="text-xs font-bold text-blue-400">
+                                                {ingredients.filter(i => i.wt_codprod || (!isNaN(Number(i.code)) && Number(i.code) > 0)).length} insumo(s) vinculado(s) ao WinThor
+                                            </div>
+                                            <button onClick={wtSyncAll} disabled={wtSyncing} className="px-6 py-3 bg-imac-yellow hover:opacity-90 text-white rounded-xl text-sm font-black disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg">
+                                                {wtSyncing ? <><i className="ph ph-spinner animate-spin text-lg"></i> Sincronizando...</> : <><i className="ph ph-arrows-clockwise text-lg"></i> Sincronizar Todos os Custos Agora</>}
+                                            </button>
+                                        </div>
+
+                                        {/* Resultado da última sincronização */}
+                                        {wtSyncResult && (
+                                            <div className="mt-4 bg-emerald-900/40 border border-emerald-700/50 rounded-xl p-4 animate-fade-in">
+                                                <p className="font-black text-emerald-400 text-sm mb-2"><i className="ph ph-check-circle mr-2"></i>Sincronização concluída — {wtSyncResult.atualizados}/{wtSyncResult.total} insumos atualizados</p>
+                                                <div className="max-h-32 overflow-y-auto custom-scroll space-y-1">
+                                                    {wtSyncResult.resultado.map(x => (
+                                                        <div key={x.ingredienteId} className={`text-xs font-bold flex justify-between px-3 py-1.5 rounded-lg ${x.encontrado ? 'text-emerald-300 bg-emerald-900/30' : 'text-red-400 bg-red-900/20'}`}>
+                                                            <span>{ingredients.find(i=>i.id===x.ingredienteId)?.name || x.ingredienteId}</span>
+                                                            <span>{x.encontrado ? `R$ ${(x[wtCostType]||x.custo_recomendado||0).toFixed(2)}` : 'Não encontrado no WinThor'}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                {/* ── FIM PAINEL WINTHOR ── */}
                                 <div className="overflow-x-auto flex-1 custom-scroll h-[600px] bg-white">
                                     <table className="w-full text-sm text-left">
                                         <thead className="bg-gray-50 text-gray-500 uppercase text-[10px] tracking-widest font-black sticky top-0 shadow-sm z-10">
