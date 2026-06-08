@@ -1165,19 +1165,30 @@
 
                 const marginDecimal = (prod.targetMargin || 0) / 100;
                 const baseCostForPricing = prod.outputType === 'unit' ? unitCost : costPerKg;
-                
-                const suggestedPrice = marginDecimal < 1 ? baseCostForPricing / (1 - marginDecimal) : 0;
-                const salePrice = safeVal(prod.manualSalePrice) || suggestedPrice;
-                
+                const pricingMode   = prod.pricingMode || 'margem'; // 'margem' ou 'markup'
+
+                // Preço sugerido baseado no modo escolhido
+                let suggestedPrice = 0;
+                if (pricingMode === 'markup') {
+                    // Markup: preço = custo × (1 + markup/100)
+                    suggestedPrice = baseCostForPricing * (1 + marginDecimal);
+                } else {
+                    // Margem sobre preço de venda: preço = custo / (1 - margem/100)
+                    suggestedPrice = marginDecimal < 1 ? baseCostForPricing / (1 - marginDecimal) : 0;
+                }
+
+                const salePrice  = safeVal(prod.manualSalePrice) > 0 ? safeVal(prod.manualSalePrice) : suggestedPrice;
                 const grossProfit = salePrice - baseCostForPricing;
+                const grossProfitLote = grossProfit * (prod.outputType === 'unit' ? totalUnits : finalYieldKg);
                 const marginPercent = salePrice > 0 ? (grossProfit / salePrice) * 100 : 0;
+                const markupPercent = baseCostForPricing > 0 ? ((salePrice / baseCostForPricing) - 1) * 100 : 0;
 
                 return {
                     finalYieldKg, grandTotalGrossKg,
                     directCost, laborCost, machineryCost, indirectCost, totalCost,
                     costPerKg, unitCost, totalUnits,
-                    suggestedPrice, salePrice, grossProfit, marginPercent,
-                    baseCostForPricing
+                    suggestedPrice, salePrice, grossProfit, grossProfitLote,
+                    marginPercent, markupPercent, baseCostForPricing, pricingMode
                 };
             };
 
@@ -1937,44 +1948,87 @@
                                     </div>
 
                                     <Card className="p-0 overflow-hidden border-imac-yellow/30 shadow-xl flex flex-col h-full">
-                                        <div className="bg-imac-yellow px-6 py-5 flex items-center gap-3"><i className="ph ph-trend-up text-white text-2xl"></i><h3 className="font-black text-white text-lg tracking-wide uppercase">Simulador de Preço</h3></div>
-                                        <div className="p-8 flex flex-col gap-8 flex-1 bg-white">
-                                            
-                                            <div className="space-y-6">
-                                                <div>
-                                                    <label className="flex items-center justify-between text-sm font-bold text-gray-600 uppercase mb-2">
-                                                        <span>Markup Alvo (Margem %)</span>
-                                                    </label>
-                                                    <div className="relative">
-                                                        <input type="number" className="w-full p-4 bg-yellow-50/50 border border-yellow-200 rounded-xl text-imac-yellow font-black text-2xl outline-none focus:ring-2 focus:ring-imac-yellow transition-all" value={p.targetMargin} onChange={e => updateField('targetMargin', Number(e.target.value))} />
-                                                        <span className="absolute right-5 top-4 text-yellow-500 font-black text-2xl">%</span>
-                                                    </div>
-                                                </div>
-                                                <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 flex justify-between items-center">
-                                                    <span className="block text-xs font-bold text-gray-500 uppercase w-32">Preço Sugerido ({p.outputType==='unit'?'Un':'Kg'})</span>
-                                                    <span className="block text-3xl font-black text-gray-800">R$ {formatMoney(t.suggestedPrice)}</span>
+                                        <div className="bg-imac-yellow px-6 py-5 flex items-center justify-between">
+                                            <div className="flex items-center gap-3"><i className="ph ph-trend-up text-white text-2xl"></i><h3 className="font-black text-white text-lg tracking-wide uppercase">Simulador de Preço</h3></div>
+                                            {/* Toggle Margem / Markup */}
+                                            <div className="flex bg-white/20 rounded-xl p-1 gap-1">
+                                                {['margem','markup'].map(mode => (
+                                                    <button key={mode} onClick={() => updateField('pricingMode', mode)}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${(p.pricingMode||'margem')===mode ? 'bg-white text-imac-yellow' : 'text-white hover:bg-white/20'}`}>
+                                                        {mode === 'margem' ? 'Margem %' : 'Markup %'}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="p-8 flex flex-col gap-6 flex-1 bg-white">
+
+                                            {/* Explicação do modo */}
+                                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs font-bold text-blue-600">
+                                                {(p.pricingMode||'margem') === 'margem'
+                                                    ? '📐 Margem: Preço = Custo ÷ (1 − margem%). Ex: custo R$1,00 com 30% margem → preço R$1,43'
+                                                    : '📐 Markup: Preço = Custo × (1 + markup%). Ex: custo R$1,00 com 30% markup → preço R$1,30'}
+                                            </div>
+
+                                            {/* Input do percentual */}
+                                            <div>
+                                                <label className="block text-sm font-bold text-gray-600 uppercase mb-2">
+                                                    {(p.pricingMode||'margem') === 'margem' ? 'Margem Alvo (% sobre preço venda)' : 'Markup Alvo (% sobre custo)'}
+                                                </label>
+                                                <div className="relative">
+                                                    <input type="number" min="0" max="99"
+                                                        className="w-full p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-imac-yellow font-black text-2xl outline-none focus:ring-2 focus:ring-imac-yellow"
+                                                        value={p.targetMargin} onChange={e => updateField('targetMargin', Number(e.target.value))} />
+                                                    <span className="absolute right-5 top-4 text-yellow-500 font-black text-2xl">%</span>
                                                 </div>
                                             </div>
 
-                                            <div className="bg-gray-900 rounded-2xl p-8 shadow-inner mt-auto">
-                                                <label className="block text-sm font-bold text-gray-400 uppercase mb-4 flex items-center gap-2 tracking-wider"><i className="ph ph-currency-dollar text-lg"></i> Preço de Venda Real Praticado</label>
-                                                <div className="relative mb-8">
-                                                    <span className="absolute left-4 top-4 text-white/50 font-black text-3xl">R$</span>
-                                                    <input type="number" step="0.01" className="w-full p-4 pl-16 bg-white/10 border-2 border-white/20 rounded-xl text-4xl font-black text-white outline-none focus:border-emerald-500 transition-colors" value={p.manualSalePrice||''} onChange={e => updateField('manualSalePrice', Number(e.target.value))} placeholder={formatMoney(t.suggestedPrice)} />
+                                            {/* Preço sugerido */}
+                                            <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 flex justify-between items-center">
+                                                <div>
+                                                    <span className="block text-xs font-bold text-gray-500 uppercase mb-1">Preço Sugerido ({p.outputType==='unit'?'por Un':'por Kg'})</span>
+                                                    <span className="block text-3xl font-black text-gray-800">R$ {formatMoney(t.suggestedPrice)}</span>
                                                 </div>
-                                                
-                                                <div className="grid grid-cols-2 gap-4">
+                                                <div className="text-right">
+                                                    <span className="block text-xs font-bold text-gray-400 uppercase mb-1">Custo Base</span>
+                                                    <span className="block text-lg font-black text-gray-500">R$ {formatMoney(t.baseCostForPricing)}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Preço praticado */}
+                                            <div className="bg-gray-900 rounded-2xl p-6 shadow-inner mt-auto">
+                                                <label className="block text-sm font-bold text-gray-400 uppercase mb-3 flex items-center gap-2 tracking-wider">
+                                                    <i className="ph ph-currency-dollar text-lg"></i> Preço de Venda Praticado
+                                                </label>
+                                                <div className="relative mb-5">
+                                                    <span className="absolute left-4 top-4 text-white/50 font-black text-2xl">R$</span>
+                                                    <input type="number" step="0.01"
+                                                        className="w-full p-4 pl-14 bg-white/10 border-2 border-white/20 rounded-xl text-3xl font-black text-white outline-none focus:border-emerald-500 transition-colors"
+                                                        value={p.manualSalePrice||''} onChange={e => updateField('manualSalePrice', Number(e.target.value))}
+                                                        placeholder={formatMoney(t.suggestedPrice)} />
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-3 mb-3">
                                                     <div className={`p-4 rounded-xl border ${t.marginPercent >= p.targetMargin ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' : 'bg-red-500/20 border-red-500/30 text-red-400'}`}>
                                                         <span className="block text-[10px] uppercase font-bold tracking-widest opacity-80 mb-1">Margem Real</span>
                                                         <span className="block text-2xl font-black">{formatMoney(t.marginPercent)}%</span>
                                                     </div>
                                                     <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-                                                        <span className="block text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1">Lucro Bruto ({p.outputType==='unit'?'Un':'Kg'})</span>
-                                                        <span className="block text-2xl font-black text-white">R$ {formatMoney(t.grossProfit)}</span>
+                                                        <span className="block text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1">Markup Real</span>
+                                                        <span className="block text-2xl font-black text-white">{formatMoney(t.markupPercent)}%</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                                                        <span className="block text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1">Lucro / {p.outputType==='unit'?'Un':'Kg'}</span>
+                                                        <span className={`block text-xl font-black ${t.grossProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {formatMoney(t.grossProfit)}</span>
+                                                    </div>
+                                                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                                                        <span className="block text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1">Lucro Lote Total</span>
+                                                        <span className={`block text-xl font-black ${t.grossProfitLote >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {formatMoney(t.grossProfitLote)}</span>
                                                     </div>
                                                 </div>
                                             </div>
-
                                         </div>
                                     </Card>
                                 </div>
