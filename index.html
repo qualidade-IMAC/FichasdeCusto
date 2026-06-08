@@ -1141,8 +1141,13 @@
                 (prod.indirectItems || []).forEach(i => {
                     const val = safeVal(i.cost);
                     if (i.type === '%') {
+                        // % sobre o custo direto
                         indirectCost += subtotalForIndirects * (val / 100);
+                    } else if (i.type === 'R$/kg') {
+                        // R$ por kg de produto — usa rendimento BRUTO (antes das perdas)
+                        indirectCost += val * grandTotalGrossKg;
                     } else {
+                        // R$ fixo por lote
                         indirectCost += val;
                     }
                 });
@@ -1868,10 +1873,18 @@
                                                 <input type="text" placeholder="Descrição do Custo..." value={ind.name} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,name:e.target.value}:x); updateField('indirectItems', ni); }} className="flex-1 text-sm font-bold text-gray-800 outline-none pl-2 border-none bg-transparent"/>
                                                 <div className="flex items-center bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
                                                     <select value={ind.type || 'R$'} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,type:e.target.value}:x); updateField('indirectItems', ni); }} className="p-3 bg-gray-100 text-xs font-black text-gray-600 outline-none border-r border-gray-200 cursor-pointer">
-                                                        <option value="R$">R$</option>
-                                                        <option value="%">%</option>
+                                                        <option value="R$">R$ fixo/lote</option>
+                                                        <option value="R$/kg">R$/kg bruto</option>
+                                                        <option value="%">% custo</option>
                                                     </select>
                                                     <input type="number" step="0.01" className="w-24 bg-transparent text-right outline-none font-black text-gray-800 p-3" value={ind.cost} onChange={e => { const ni = p.indirectItems.map(x=>x.id===ind.id?{...x,cost:e.target.value}:x); updateField('indirectItems', ni); }}/>
+                                                </div>
+                                                <div className="text-[10px] font-bold text-gray-400 w-20 text-right hidden md:block">
+                                                    {ind.type === 'R$/kg'
+                                                        ? `= R$ ${(safeVal(ind.cost) * t.grandTotalGrossKg).toFixed(2)}`
+                                                        : ind.type === '%'
+                                                        ? `= R$ ${((t.directCost + t.laborCost + t.machineryCost) * safeVal(ind.cost) / 100).toFixed(2)}`
+                                                        : ''}
                                                 </div>
                                                 <button onClick={() => { const ni = p.indirectItems.filter(x=>x.id!==ind.id); updateField('indirectItems', ni); }} className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><i className="ph ph-trash text-xl"></i></button>
                                             </div>
@@ -2385,7 +2398,8 @@
                                     <div className="flex items-center bg-white rounded-xl border border-gray-200 overflow-hidden focus-within:border-imac-yellow transition-colors">
                                         <select value={setNewIndirect.type} onChange={e=>setSetNewIndirect({...setNewIndirect, type: e.target.value})} className="p-3 bg-gray-100 text-sm font-black text-gray-600 outline-none border-r border-gray-200 cursor-pointer">
                                             <option value="%">%</option>
-                                            <option value="R$">R$</option>
+                                            <option value="R$/kg">R$/kg</option>
+                                            <option value="R$">R$ fixo</option>
                                         </select>
                                         <input type="number" step="0.01" className="w-full border-none px-3 py-3 text-sm font-black text-gray-800 outline-none focus:ring-0 text-right" placeholder="0.00" value={setNewIndirect.cost} onChange={e=>setSetNewIndirect({...setNewIndirect, cost: e.target.value})} />
                                     </div>
@@ -2396,7 +2410,7 @@
                                         <div key={ind.id} className="flex justify-between items-center p-4 border border-gray-200 rounded-xl bg-white shadow-sm hover:border-imac-yellow transition-colors group">
                                             <div>
                                                 <div className="font-black text-sm text-gray-800 mb-0.5">{ind.name}</div>
-                                                <div className="text-xs font-black text-imac-yellow">{ind.type === '%' ? `${ind.cost}% do Subtotal` : `R$ ${ind.cost} fixos`}</div>
+                                                <div className="text-xs font-black text-imac-yellow">{ind.type === '%' ? `${ind.cost}% do Subtotal` : ind.type === 'R$/kg' ? `R$ ${ind.cost}/kg bruto` : `R$ ${ind.cost} fixos/lote`}</div>
                                             </div>
                                             <button onClick={()=>removeDefaultIndirect(ind.id)} className="text-gray-300 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"><i className="ph ph-trash text-xl"></i></button>
                                         </div>
