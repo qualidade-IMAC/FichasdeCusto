@@ -76,17 +76,33 @@
         .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
         @media print {
-            @page { margin: 0.5cm; size: A4; }
-            body { background-color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { margin: 1cm; size: A4 portrait; }
+            body { 
+                background-color: white !important; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact;
+                overflow: visible !important;
+                height: auto !important;
+            }
+            #root, #root > *, #root > * > * {
+                overflow: visible !important;
+                height: auto !important;
+                max-height: none !important;
+            }
             .no-print { display: none !important; }
             .print-only { display: block !important; }
             .page-break { break-after: page; page-break-after: always; }
             .avoid-break { break-inside: avoid; page-break-inside: avoid; }
             .print-shadow-none { box-shadow: none !important; border-color: #e5e7eb !important; }
+            /* Garante que a ficha aparece completa */
+            .hidden { display: block !important; }
+            [class*="overflow"] { overflow: visible !important; }
+            /* Remove scrollbars */
+            ::-webkit-scrollbar { display: none !important; }
         }
     </style>
 </head>
-<body class="text-gray-800 h-screen overflow-hidden bg-imac-bg">
+<body class="text-gray-800 h-screen overflow-hidden bg-imac-bg print:overflow-visible print:h-auto">
 
     <div id="root" class="h-full"></div>
 
@@ -1553,15 +1569,14 @@
             };
 
             const PrintTechSheet = ({ product: p, calc: t, settings }) => (
-                <div className="hidden print:block w-full bg-white text-black p-4 font-sans max-w-4xl mx-auto">
-                    <div className="flex justify-between items-start border-b-4 border-gray-900 pb-6 mb-8">
-                        <div>
-                            <img src={settings?.logo || "logo.png"} className="h-20 w-auto object-contain" onError={(e) => e.target.style.display='none'} />
-                        </div>
-                        <div className="text-right">
-                            <h1 className="text-3xl font-black uppercase tracking-widest text-gray-900">Ficha Técnica e de Custos</h1>
-                            <p className="text-gray-500 font-bold mt-1 tracking-widest">REF: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVA'}</p>
-                            <p className="text-gray-500 text-xs mt-1">Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
+                <div className="hidden print:block w-full bg-white text-black font-sans" style={{padding: '0', margin: '0', maxWidth: '100%'}}>
+                    {/* Cabeçalho */}
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', borderBottom:'4px solid #111', paddingBottom:'24px', marginBottom:'32px'}}>
+                        <img src={settings?.logo || "logo.png"} style={{height:'64px', width:'auto', objectFit:'contain'}} onError={(e) => e.target.style.display='none'} />
+                        <div style={{textAlign:'right'}}>
+                            <h1 style={{fontSize:'22px', fontWeight:'900', textTransform:'uppercase', letterSpacing:'2px', color:'#111', margin:0}}>Ficha Técnica e de Custos</h1>
+                            <p style={{color:'#888', fontWeight:'700', marginTop:'4px', letterSpacing:'2px', fontSize:'12px'}}>REF: {p.id ? p.id.slice(-6).toUpperCase() : 'NOVA'}</p>
+                            <p style={{color:'#888', fontSize:'11px', marginTop:'2px'}}>Emissão: {new Date().toLocaleDateString('pt-BR')}</p>
                         </div>
                     </div>
 
