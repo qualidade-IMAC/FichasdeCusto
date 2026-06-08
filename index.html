@@ -121,9 +121,6 @@
         const dbExpedio = getFirestore(appExpedio);
         const expedioAppId = '1:634756791567:web:993e61243b57b7e057d27a';
         
-        // Autentica no Firebase Expedio anonimamente para ter permissão de leitura/escrita
-        signInAnonymously(authExpedio).catch(e => console.warn('Auth Expedio falhou:', e.message));
-        
         const auth = getAuth(app);
         const db = getFirestore(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'fichasdecusto_app';
@@ -703,7 +700,13 @@
                 const provider = new GoogleAuthProvider();
                 try {
                     setLoadingAuth(true);
-                    await signInWithPopup(auth, provider);
+                    const result = await signInWithPopup(auth, provider);
+                    // Autentica no dbExpedio com a mesma credencial Google
+                    try {
+                        const { GoogleAuthProvider: GAP, signInWithCredential } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+                        const credential = GAP.credentialFromResult(result);
+                        if (credential) await signInWithCredential(authExpedio, credential);
+                    } catch(e) { console.warn('Auth Expedio com credencial falhou:', e.message); }
                 } catch (error) {
                     console.error("Login error:", error);
                     notify("Erro ao tentar entrar com o Google.");
@@ -1241,20 +1244,8 @@
                 // ── Salva no Firebase ─────────────────────────────────────
                 if (user) {
                     try {
-                        // Aguarda auth do Expedio estar pronta (até 5s)
-                        let expedioUid = user.uid;
-                        await new Promise(res => {
-                            if (authExpedio.currentUser) {
-                                expedioUid = authExpedio.currentUser.uid;
-                                return res();
-                            }
-                            const unsub = authExpedio.onAuthStateChanged(u => {
-                                unsub();
-                                if (u) expedioUid = u.uid;
-                                res();
-                            });
-                            setTimeout(res, 5000);
-                        });
+                        // Usa o UID do Google para o dbExpedio (igual ao handleSave)
+                        const expedioUid = authExpedio.currentUser ? authExpedio.currentUser.uid : user.uid;
                         console.log('[Import] expedioUid:', expedioUid);
 
                         // Salva receitas em lotes de 400 (limite Firestore)
