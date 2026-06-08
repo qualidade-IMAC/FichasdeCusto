@@ -1386,7 +1386,7 @@
                 </div>
             );
 
-            const renderCatalogList = () => {
+            const CatalogList = () => {
                 const [catSearch, setCatSearch]         = React.useState('');
                 const [catSector, setCatSector]         = React.useState('');
                 const [catSelected, setCatSelected]     = React.useState([]);
@@ -2482,7 +2482,7 @@
 
             let content;
             if (view === 'dashboard') content = renderDashboard();
-            else if (view === 'catalog_list') content = renderCatalogList();
+            else if (view === 'catalog_list') content = <CatalogList />;
             else if (view === 'catalog_editor') content = renderCatalogEditor();
             else if (view === 'inventory') content = renderInventory();
             else if (view === 'inv_print') content = renderInvPrint();
