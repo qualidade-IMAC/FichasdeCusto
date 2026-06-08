@@ -779,15 +779,98 @@
             const [setNewEmployee, setSetNewEmployee] = useState({ name: '', salary: '', hoursMonth: 220 });
             const [setNewIndirect, setSetNewIndirect] = useState({ name: '', cost: '', type: '%' });
 
-            // ── Importação de Custos WinThor (sem instalação) ───────────────
+            // ── Importação de Custos WinThor (Bridge direto) ────────────────
             const [wtPanelOpen, setWtPanelOpen]     = useState(false);
             const [wtSyncing, setWtSyncing]          = useState(false);
             const [wtLastSync, setWtLastSync]        = useState(() => localStorage.getItem('wt_last_sync') || null);
             const [wtSyncResult, setWtSyncResult]    = useState(null);
-            const [wtImportStep, setWtImportStep]    = useState('idle'); // idle | preview | done
-            const [wtParsed, setWtParsed]            = useState([]);     // linhas parseadas do Excel/colar
-            const [wtPasteText, setWtPasteText]      = useState('');
+            const [wtSearching, setWtSearching]      = useState(false);
+            const [wtSearchResults, setWtSearchResults] = useState([]);
+            const [wtSearchTerm, setWtSearchTerm]    = useState('');
+            const [wtBridgeUrl, setWtBridgeUrl]      = useState(() => localStorage.getItem('wt_bridge_url') || 'http://localhost:3099');
+            const [wtStatus, setWtStatus]            = useState(null); // null | 'ok' | 'erro'
             const wtFileRef = useRef(null);
+
+            const saveWtUrl = (url) => { setWtBridgeUrl(url); localStorage.setItem('wt_bridge_url', url); };
+
+            // Testa conexão
+            const wtTestConnection = async () => {
+                setWtStatus(null);
+                try {
+                    const r = await fetch(`${wtBridgeUrl}/health`, { signal: AbortSignal.timeout(5000) });
+                    const d = await r.json();
+                    if (d.ok) { setWtStatus('ok'); notify('✅ Bridge conectado!'); return true; }
+                } catch { }
+                setWtStatus('erro');
+                notify('❌ Bridge offline. Verifique se o INICIAR está rodando.');
+                return false;
+            };
+
+            // Busca ingredientes no portal via Bridge
+            const wtSearch = async () => {
+                if (!wtSearchTerm.trim()) return;
+                setWtSearching(true);
+                setWtSearchResults([]);
+                try {
+                    const r = await fetch(`${wtBridgeUrl}/api/materias-primas?busca=${encodeURIComponent(wtSearchTerm)}`, { signal: AbortSignal.timeout(15000) });
+                    const d = await r.json();
+                    if (d.ok) setWtSearchResults(d.dados || []);
+                    else notify('Erro: ' + d.erro);
+                } catch (e) { notify('Erro ao buscar: ' + e.message); }
+                finally { setWtSearching(false); }
+            };
+
+            // Adiciona produto do portal ao estoque
+            const wtAddToStock = async (prod) => {
+                if (!user) return;
+                const existing = ingredients.find(i => String(i.code) === String(prod.codprod));
+                if (existing) { notify(`"${prod.descricao}" já existe no estoque.`); return; }
+                const newIng = { id: generateId(), code: String(prod.codprod), name: prod.descricao, price: prod.custo_recomendado || prod.custo || 0, unit: prod.unidade || 'kg' };
+                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', newIng.id), newIng);
+                setIngredients(prev => [...prev, newIng]);
+                notify(`✅ "${prod.descricao}" adicionado ao estoque!`);
+            };
+
+            // Vincula produto do portal a insumo existente
+            const wtLink = async (ingId, prod) => {
+                if (!user) return;
+                const updates = { code: String(prod.codprod), price: prod.custo_recomendado || prod.custo || 0, unit: prod.unidade || 'kg' };
+                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ingId), updates, { merge: true });
+                setIngredients(prev => prev.map(i => i.id === ingId ? { ...i, ...updates } : i));
+                notify(`✅ Vinculado: ${prod.descricao}`);
+            };
+
+            // Sincroniza TODOS os insumos com código via Bridge
+            const wtSyncAll = async () => {
+                const comCodigo = ingredients.filter(i => i.code && !isNaN(Number(i.code)) && Number(i.code) > 0);
+                if (comCodigo.length === 0) { notify('Nenhum insumo com Código ERP. Busque e adicione primeiro.'); return; }
+                setWtSyncing(true); setWtSyncResult(null);
+                try {
+                    const itens = comCodigo.map(i => ({ ingredienteId: i.id, codprod: Number(i.code) }));
+                    const r = await fetch(`${wtBridgeUrl}/api/sincronizar`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ itens }), signal: AbortSignal.timeout(30000),
+                    });
+                    const d = await r.json();
+                    if (!d.ok) throw new Error(d.erro);
+                    const batch = writeBatch(db);
+                    d.resultado.filter(x => x.encontrado).forEach(x => {
+                        const novoPreco = x.custo_recomendado || x.custo || 0;
+                        if (novoPreco > 0) {
+                            batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', x.ingredienteId),
+                                { price: novoPreco, wt_ultima_sync: new Date().toISOString() }, { merge: true });
+                            setIngredients(prev => prev.map(i => i.id === x.ingredienteId ? { ...i, price: novoPreco } : i));
+                        }
+                    });
+                    await batch.commit();
+                    const now = new Date().toLocaleString('pt-BR');
+                    setWtLastSync(now); localStorage.setItem('wt_last_sync', now);
+                    setWtSyncResult(d);
+                    notify(`✅ ${d.atualizados} insumos atualizados!`);
+                } catch (e) { notify('❌ Erro: ' + e.message); }
+                finally { setWtSyncing(false); }
+            };
+            // ── Fim WinThor Bridge ───────────────────────────────────────────
 
             // Parseia texto colado ou Excel (TSV/CSV)
             // Colunas do portal: CODIGO | PRODUTO | EMBALAGEM | RENDIMENTO | QTD | QTD/RECEITA | UNIDADE | TIPO | CUSTO | CUSTO RECEITA
@@ -1733,129 +1816,118 @@
                                             <input type="text" placeholder="Pesquisa Inteligente (Nome ou Cód)..." value={invSearch} onChange={e=>setInvSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm rounded-xl bg-white border-0 outline-none focus:ring-2 focus:ring-imac-yellow font-bold"/>
                                         </div>
                                         <button onClick={() => setView('inv_print')} className="bg-white/10 hover:bg-white/20 border border-white/10 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors" title="Imprimir Base de Dados"><i className="ph ph-file-arrow-down text-lg"></i> Ficha TI</button>
-                                        <button onClick={() => { setWtPanelOpen(v => !v); setWtImportStep('idle'); setWtParsed([]); setWtPasteText(''); setWtSyncResult(null); }} className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border ${wtPanelOpen ? 'bg-imac-yellow text-white border-imac-yellow' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'}`}>
+                                        <button onClick={() => setWtPanelOpen(v => !v)} className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border ${wtPanelOpen ? 'bg-imac-yellow text-white border-imac-yellow' : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'}`}>
                                             <i className="ph ph-currency-dollar text-lg"></i> Atualizar Custos
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* ── PAINEL IMPORTAÇÃO DE CUSTOS ── */}
+                                {/* ── PAINEL BRIDGE ── */}
                                 {wtPanelOpen && (
-                                    <div className="bg-gradient-to-br from-slate-900 to-blue-950 border-b border-blue-900 p-5 animate-fade-in">
+                                    <div className="bg-gradient-to-br from-slate-900 to-blue-950 border-b border-blue-900 p-5">
+
                                         {/* Header */}
                                         <div className="flex items-center gap-3 mb-5">
-                                            <div className="w-9 h-9 rounded-xl bg-imac-yellow flex items-center justify-center flex-shrink-0"><i className="ph ph-currency-dollar text-white text-xl"></i></div>
-                                            <div>
-                                                <h4 className="font-black text-white text-sm tracking-wide">Atualizar Custos via WinThor / Portal</h4>
-                                                <p className="text-blue-300 text-xs font-medium">Importe a tabela de custos do portal corporativo — sem instalar nada</p>
+                                            <div className="w-9 h-9 rounded-xl bg-imac-yellow flex items-center justify-center flex-shrink-0"><i className="ph ph-plugs-connected text-white text-xl"></i></div>
+                                            <div className="flex-1">
+                                                <h4 className="font-black text-white text-sm tracking-wide">Integração Portal Corporativo — Custos em Tempo Real</h4>
+                                                <p className="text-blue-300 text-xs font-medium">Busca e sincroniza custos direto do portal via Bridge local</p>
                                             </div>
-                                            {wtLastSync && <span className="ml-auto text-[10px] font-bold text-blue-400 text-right hidden md:block whitespace-nowrap">Última atualização:<br/>{wtLastSync}</span>}
+                                            {wtLastSync && <span className="text-[10px] font-bold text-blue-400 text-right whitespace-nowrap">Última sync:<br/>{wtLastSync}</span>}
                                         </div>
 
-                                        {wtImportStep === 'idle' && (
-                                            <>
-                                                {/* Passo a passo */}
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
-                                                    {[
-                                                        { n:'1', icon:'ph-globe', title:'Abra o portal', desc:'Acesse 192.168.26.225/producao/custos no navegador' },
-                                                        { n:'2', icon:'ph-selection-all', title:'Selecione a tabela', desc:'Ctrl+A na tabela de custos, depois Ctrl+C para copiar' },
-                                                        { n:'3', icon:'ph-clipboard-text', title:'Cole aqui', desc:'Clique na área abaixo e pressione Ctrl+V' },
-                                                    ].map(s => (
-                                                        <div key={s.n} className="flex gap-3 bg-white/5 border border-blue-800/50 rounded-xl p-4">
-                                                            <div className="w-7 h-7 rounded-full bg-imac-yellow text-white font-black text-sm flex items-center justify-center flex-shrink-0">{s.n}</div>
-                                                            <div><p className="font-black text-white text-xs mb-0.5">{s.title}</p><p className="text-blue-300 text-[11px] font-medium">{s.desc}</p></div>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                        {/* URL do Bridge + status */}
+                                        <div className="flex gap-2 mb-5">
+                                            <div className="relative flex-1">
+                                                <input value={wtBridgeUrl} onChange={e => saveWtUrl(e.target.value)}
+                                                    className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-blue-700 text-white text-sm font-mono outline-none focus:border-imac-yellow transition-colors pr-10"
+                                                    placeholder="http://localhost:3099" />
+                                                {wtStatus === 'ok' && <i className="ph ph-check-circle absolute right-3 top-3 text-emerald-400 text-lg"></i>}
+                                                {wtStatus === 'erro' && <i className="ph ph-x-circle absolute right-3 top-3 text-red-400 text-lg"></i>}
+                                            </div>
+                                            <button onClick={wtTestConnection} className="px-4 py-2.5 bg-blue-700 hover:bg-blue-600 text-white rounded-xl text-xs font-black transition-colors whitespace-nowrap border border-blue-600">
+                                                <i className="ph ph-wifi-high mr-1"></i>Testar
+                                            </button>
+                                            <button onClick={wtSyncAll} disabled={wtSyncing} className="px-5 py-2.5 bg-imac-yellow hover:opacity-90 text-white rounded-xl text-sm font-black disabled:opacity-50 transition-all flex items-center gap-2 whitespace-nowrap shadow-lg">
+                                                {wtSyncing ? <><i className="ph ph-spinner animate-spin"></i>Atualizando...</> : <><i className="ph ph-arrows-clockwise"></i>Sincronizar Todos</>}
+                                            </button>
+                                        </div>
 
-                                                {/* Área de colar + upload */}
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Colar dados copiados do portal (Ctrl+V)</label>
-                                                        <textarea
-                                                            className="w-full h-32 px-4 py-3 rounded-xl bg-white/10 border border-blue-700 text-white text-xs font-mono outline-none focus:border-imac-yellow transition-colors resize-none placeholder-blue-600"
-                                                            placeholder={"Cole aqui os dados copiados da tabela do portal...\nEx:\n3590\tFECULA DE MANDIOCA\tKG\t60.61\t...\t3,60\n113\tOVO LIQUIDO\tKG\t...\t13,36"}
-                                                            value={wtPasteText}
-                                                            onChange={e => wtHandlePaste(e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className="flex flex-col gap-3">
-                                                        <div>
-                                                            <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Ou envie um arquivo Excel / CSV</label>
-                                                            <div className="relative h-32 border-2 border-dashed border-blue-700 hover:border-imac-yellow rounded-xl flex flex-col items-center justify-center gap-2 text-blue-400 hover:text-imac-yellow transition-colors cursor-pointer bg-white/5">
-                                                                <input ref={wtFileRef} type="file" accept=".xlsx,.xls,.csv,.txt" className="absolute inset-0 opacity-0 cursor-pointer" onChange={wtHandleFile} />
-                                                                <i className="ph ph-upload-simple text-3xl"></i>
-                                                                <span className="text-xs font-bold text-center px-4">Clique para enviar<br/><span className="font-medium text-blue-500">.xlsx, .csv, .txt</span></span>
+                                        {/* Busca de produto no portal */}
+                                        <div className="bg-white/5 border border-blue-800/60 rounded-xl p-4 mb-4">
+                                            <label className="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-2">Buscar Ingrediente no Portal para Adicionar ao Estoque</label>
+                                            <div className="flex gap-2 mb-3">
+                                                <input value={wtSearchTerm} onChange={e => setWtSearchTerm(e.target.value)}
+                                                    onKeyDown={e => e.key === 'Enter' && wtSearch()}
+                                                    placeholder="Ex: Farinha, Açúcar, Margarina..."
+                                                    className="flex-1 px-3 py-2.5 rounded-xl bg-white/10 border border-blue-700 text-white text-sm font-bold outline-none focus:border-imac-yellow placeholder-blue-600 transition-colors" />
+                                                <button onClick={wtSearch} disabled={wtSearching} className="px-5 py-2.5 bg-imac-yellow hover:opacity-90 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center gap-2">
+                                                    {wtSearching ? <><i className="ph ph-spinner animate-spin"></i>Buscando...</> : <><i className="ph ph-magnifying-glass"></i>Buscar</>}
+                                                </button>
+                                            </div>
+
+                                            {wtSearchResults.length > 0 && (
+                                                <div className="max-h-56 overflow-y-auto custom-scroll space-y-1.5">
+                                                    {wtSearchResults.map(prod => (
+                                                        <div key={prod.codprod} className="flex items-center justify-between bg-white/10 hover:bg-white/15 rounded-xl px-4 py-2.5 transition-colors">
+                                                            <div className="flex-1 min-w-0 mr-3">
+                                                                <p className="font-black text-white text-sm truncate">{prod.descricao}</p>
+                                                                <div className="flex gap-3 mt-0.5">
+                                                                    <span className="text-blue-300 text-xs font-mono">#{prod.codprod}</span>
+                                                                    <span className="text-blue-400 text-xs font-bold">{prod.unidade}</span>
+                                                                    <span className="text-imac-yellow text-xs font-black">R$ {(prod.custo_recomendado || prod.custo || 0).toFixed(2)}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex gap-2 flex-shrink-0">
+                                                                <select className="text-xs bg-blue-900 text-white border border-blue-700 rounded-lg px-2 py-1.5 outline-none font-bold max-w-[140px]"
+                                                                    id={`sel-${prod.codprod}`} defaultValue="">
+                                                                    <option value="" disabled>Vincular a...</option>
+                                                                    {ingredients.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                                                                </select>
+                                                                <button onClick={() => {
+                                                                    const sel = document.getElementById(`sel-${prod.codprod}`);
+                                                                    if (!sel?.value) { notify('Selecione um insumo.'); return; }
+                                                                    wtLink(sel.value, prod);
+                                                                }} className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-xs font-black transition-colors">
+                                                                    <i className="ph ph-link mr-1"></i>Vincular
+                                                                </button>
+                                                                <button onClick={() => wtAddToStock(prod)}
+                                                                    className="px-3 py-1.5 bg-imac-yellow hover:opacity-90 text-white rounded-lg text-xs font-black transition-colors whitespace-nowrap">
+                                                                    <i className="ph ph-plus mr-1"></i>Adicionar
+                                                                </button>
                                                             </div>
                                                         </div>
-                                                        <div className="bg-white/5 border border-blue-800/50 rounded-xl p-3">
-                                                            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Como exportar do portal:</p>
-                                                            <p className="text-[11px] text-blue-300 font-medium">No portal, use <strong className="text-white">Ctrl+A</strong> na tabela → <strong className="text-white">Ctrl+C</strong> → cole aqui. Ou salve como Excel e envie o arquivo.</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
-
-                                        {wtImportStep === 'preview' && (
-                                            <div className="animate-fade-in">
-                                                <div className="flex items-center justify-between mb-3">
-                                                    <p className="font-black text-emerald-400 text-sm"><i className="ph ph-check-circle mr-2"></i>{wtParsed.length} produtos identificados — confira antes de aplicar:</p>
-                                                    <button onClick={() => { setWtImportStep('idle'); setWtParsed([]); setWtPasteText(''); }} className="text-blue-400 hover:text-white text-xs font-bold transition-colors"><i className="ph ph-arrow-left mr-1"></i>Voltar</button>
-                                                </div>
-                                                <div className="max-h-48 overflow-y-auto custom-scroll rounded-xl border border-blue-800 mb-4">
-                                                    <table className="w-full text-xs">
-                                                        <thead className="bg-blue-900/60 text-blue-300 uppercase sticky top-0">
-                                                            <tr><th className="px-3 py-2 text-left font-black">Código</th><th className="px-3 py-2 text-left font-black">Produto</th><th className="px-3 py-2 text-center font-black">Unid.</th><th className="px-3 py-2 text-right font-black">Custo</th><th className="px-3 py-2 text-center font-black">Insumo Vinculado</th></tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-blue-900/40">
-                                                            {wtParsed.map((p, i) => {
-                                                                const ing = ingredients.find(x => String(x.code) === String(p.codprod));
-                                                                return (
-                                                                    <tr key={i} className={`${ing ? 'bg-emerald-900/20' : 'bg-white/5'}`}>
-                                                                        <td className="px-3 py-2 font-mono text-blue-300">{p.codprod}</td>
-                                                                        <td className="px-3 py-2 font-bold text-white truncate max-w-[180px]">{p.descricao}</td>
-                                                                        <td className="px-3 py-2 text-center text-blue-300 font-bold">{p.unidade}</td>
-                                                                        <td className="px-3 py-2 text-right font-black text-imac-yellow">R$ {p.custo.toFixed(2)}</td>
-                                                                        <td className="px-3 py-2 text-center">{ing ? <span className="text-emerald-400 font-bold text-[10px]">✅ {ing.name.slice(0,20)}</span> : <span className="text-red-400 font-bold text-[10px]">Sem vínculo</span>}</td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                                <div className="flex items-center justify-between gap-4 bg-blue-900/30 rounded-xl p-4 border border-blue-800">
-                                                    <div>
-                                                        <p className="text-white font-black text-sm">{ingredients.filter(x => x.code && wtParsed.find(p => String(p.codprod) === String(x.code))).length} insumos serão atualizados</p>
-                                                        <p className="text-blue-400 text-xs font-medium mt-0.5">Apenas insumos com código ERP preenchido serão afetados</p>
-                                                    </div>
-                                                    <button onClick={wtApplyImport} disabled={wtSyncing} className="px-6 py-3 bg-imac-yellow hover:opacity-90 text-white rounded-xl text-sm font-black disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg whitespace-nowrap">
-                                                        {wtSyncing ? <><i className="ph ph-spinner animate-spin text-lg"></i>Aplicando...</> : <><i className="ph ph-arrows-clockwise text-lg"></i>Aplicar Custos</>}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {wtImportStep === 'done' && wtSyncResult && (
-                                            <div className="animate-fade-in">
-                                                <div className="flex items-center gap-3 bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-4 mb-4">
-                                                    <i className="ph ph-check-circle text-3xl text-emerald-400"></i>
-                                                    <div>
-                                                        <p className="font-black text-emerald-400 text-sm">{wtSyncResult.atualizados} de {wtSyncResult.total} insumos atualizados com sucesso!</p>
-                                                        <p className="text-emerald-600 text-xs font-medium">{wtLastSync}</p>
-                                                    </div>
-                                                    <button onClick={() => { setWtImportStep('idle'); setWtParsed([]); setWtPasteText(''); setWtSyncResult(null); }} className="ml-auto text-blue-400 hover:text-white text-xs font-bold transition-colors"><i className="ph ph-arrow-counter-clockwise mr-1"></i>Nova importação</button>
-                                                </div>
-                                                <div className="max-h-40 overflow-y-auto custom-scroll space-y-1">
-                                                    {wtSyncResult.resultado.filter(x => x.cod).map((x,i) => (
-                                                        <div key={i} className={`text-xs font-bold flex justify-between px-3 py-1.5 rounded-lg ${x.atualizado ? 'text-emerald-300 bg-emerald-900/20' : 'text-slate-500 bg-white/5'}`}>
-                                                            <span>{x.nome}</span>
-                                                            <span>{x.atualizado ? `✅ R$ ${x.custo?.toFixed(2)}` : '— sem código vinculado'}</span>
-                                                        </div>
                                                     ))}
                                                 </div>
+                                            )}
+                                            {wtSearchResults.length === 0 && !wtSearching && wtSearchTerm && (
+                                                <p className="text-blue-400 text-sm font-bold text-center py-3">Nenhum resultado. Verifique se o Bridge está conectado.</p>
+                                            )}
+                                        </div>
+
+                                        {/* Resultado da sincronização */}
+                                        {wtSyncResult && (
+                                            <div className="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-4">
+                                                <p className="font-black text-emerald-400 text-sm mb-2">
+                                                    <i className="ph ph-check-circle mr-2"></i>{wtSyncResult.atualizados}/{wtSyncResult.total} insumos atualizados
+                                                </p>
+                                                <div className="max-h-32 overflow-y-auto custom-scroll space-y-1">
+                                                    {(wtSyncResult.resultado || []).map((x, i) => {
+                                                        const ing = ingredients.find(ig => ig.id === x.ingredienteId);
+                                                        return (
+                                                            <div key={i} className={`text-xs font-bold flex justify-between px-3 py-1.5 rounded-lg ${x.encontrado ? 'text-emerald-300 bg-emerald-900/20' : 'text-slate-500 bg-white/5'}`}>
+                                                                <span>{ing?.name || x.ingredienteId}</span>
+                                                                <span>{x.encontrado ? `R$ ${(x.custo||0).toFixed(2)}` : 'não encontrado'}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
                                         )}
+
+                                        <p className="text-blue-600 text-[10px] font-bold mt-3 text-center">
+                                            {ingredients.filter(i => i.code && !isNaN(Number(i.code)) && Number(i.code) > 0).length} insumo(s) com Código ERP vinculado(s) ao portal
+                                        </p>
                                     </div>
                                 )}
                                 {/* ── FIM PAINEL ── */}
