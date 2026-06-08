@@ -840,33 +840,45 @@
                 notify(`✅ Vinculado: ${prod.descricao}`);
             };
 
-            // Sincroniza TODOS os insumos com código via Bridge
+            // Sincroniza TODOS os insumos com código via Bridge (GET para evitar CORS/mixed-content)
             const wtSyncAll = async () => {
                 const comCodigo = ingredients.filter(i => i.code && !isNaN(Number(i.code)) && Number(i.code) > 0);
                 if (comCodigo.length === 0) { notify('Nenhum insumo com Código ERP. Busque e adicione primeiro.'); return; }
                 setWtSyncing(true); setWtSyncResult(null);
                 try {
-                    const itens = comCodigo.map(i => ({ ingredienteId: i.id, codprod: Number(i.code) }));
-                    const r = await fetch(`${wtBridgeUrl}/api/sincronizar`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ itens }), signal: AbortSignal.timeout(30000),
+                    // Usa GET com codprods na query string — evita bloqueio de POST cross-origin
+                    const codprods = comCodigo.map(i => i.code).join(',');
+                    const r = await fetch(`${wtBridgeUrl}/api/sincronizar?codprods=${encodeURIComponent(codprods)}`, {
+                        signal: AbortSignal.timeout(30000),
                     });
                     const d = await r.json();
                     if (!d.ok) throw new Error(d.erro);
+
+                    // Mapa codprod → ingredienteId
+                    const mapaIng = {};
+                    comCodigo.forEach(i => { mapaIng[String(i.code)] = i.id; });
+
                     const batch = writeBatch(db);
-                    d.resultado.filter(x => x.encontrado).forEach(x => {
+                    let atualizados = 0;
+                    const resultado = d.resultado.map(x => {
+                        const ingId = mapaIng[String(x.codprod)];
+                        const ing   = ingredients.find(i => i.id === ingId);
+                        if (!x.encontrado || !ingId) return { ...x, ingredienteId: ingId };
                         const novoPreco = x.custo_recomendado || x.custo || 0;
                         if (novoPreco > 0) {
-                            batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', x.ingredienteId),
+                            batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ingId),
                                 { price: novoPreco, wt_ultima_sync: new Date().toISOString() }, { merge: true });
-                            setIngredients(prev => prev.map(i => i.id === x.ingredienteId ? { ...i, price: novoPreco } : i));
+                            setIngredients(prev => prev.map(i => i.id === ingId ? { ...i, price: novoPreco } : i));
+                            atualizados++;
                         }
+                        return { ...x, ingredienteId: ingId };
                     });
                     await batch.commit();
+
                     const now = new Date().toLocaleString('pt-BR');
                     setWtLastSync(now); localStorage.setItem('wt_last_sync', now);
-                    setWtSyncResult(d);
-                    notify(`✅ ${d.atualizados} insumos atualizados!`);
+                    setWtSyncResult({ ...d, atualizados, resultado });
+                    notify(`✅ ${atualizados} insumos atualizados com preços do portal!`);
                 } catch (e) { notify('❌ Erro: ' + e.message); }
                 finally { setWtSyncing(false); }
             };
