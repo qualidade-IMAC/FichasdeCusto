@@ -1439,9 +1439,18 @@
                     for (const id of catSelected) {
                         const prod = catalog.find(p => p.id === id);
                         if (!prod) continue;
-                        const updated = { ...prod, line: catMoveSector, category: catMoveSector };
-                        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'recipes', id), updated);
+                        await setDoc(
+                            doc(db, 'artifacts', appId, 'users', user.uid, 'recipes', id),
+                            { line: catMoveSector, category: catMoveSector },
+                            { merge: true }
+                        );
                     }
+                    // Atualiza estado local imediatamente sem esperar o onSnapshot
+                    setCatalog(prev => prev.map(p =>
+                        catSelected.includes(p.id)
+                            ? { ...p, line: catMoveSector, category: catMoveSector }
+                            : p
+                    ));
                     notify(`✅ ${catSelected.length} ficha(s) movidas para "${catMoveSector}"`);
                     clearSel();
                 };
@@ -1505,10 +1514,15 @@
                             <div className="flex-1"/>
                             <div className="flex items-center gap-2">
                                 <select value={catMoveSector} onChange={e => setCatMoveSector(e.target.value)}
-                                    className="px-3 py-2 rounded-xl text-sm font-bold text-gray-800 border-0 outline-none">
+                                    className="px-3 py-2 rounded-xl text-sm font-bold text-gray-800 border border-gray-300 outline-none">
                                     <option value="">Mover para setor...</option>
-                                    {(settings?.lines || sectors).map(s => <option key={s} value={s}>{s}</option>)}
+                                    {[...new Set([...(settings?.lines || []), ...sectors])].sort().map(s =>
+                                        <option key={s} value={s}>{s}</option>
+                                    )}
                                 </select>
+                                <input value={catMoveSector} onChange={e => setCatMoveSector(e.target.value)}
+                                    placeholder="Ou digite novo setor"
+                                    className="px-3 py-2 rounded-xl text-sm font-bold border border-gray-300 outline-none w-36" />
                                 <button onClick={moveSelected} disabled={!catMoveSector || !catSelected.length}
                                     className="px-4 py-2 bg-imac-yellow text-white rounded-xl text-sm font-black disabled:opacity-40">
                                     <i className="ph ph-arrow-right mr-1"></i>Mover
