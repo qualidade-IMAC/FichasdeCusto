@@ -1381,30 +1381,138 @@
                 </div>
             );
 
-            const renderCatalogList = () => (
-                <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-20">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-gray-200 pb-4">
-                        <h2 className="text-2xl font-black text-imac-text leading-tight">Catálogo de Fichas Técnicas</h2>
-                        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                            <Button onClick={() => setImportDataModalOpen(true)} variant="secondary" className="text-sm flex-1 sm:flex-none whitespace-nowrap border-imac-yellow text-imac-yellow hover:bg-yellow-50"><i className="ph ph-file-xls text-lg"></i> Importar Ficheiros</Button>
-                            <Button onClick={() => { 
-                                const defaults = (settings?.defaultIndirectCosts || []).map(d => ({ ...d, id: generateId() }));
-                                setEditingProduct({...INITIAL_PRODUCT, id: generateId(), indirectItems: defaults}); 
-                                setView('catalog_editor'); 
-                                setEditorTab('receita'); 
-                            }} variant="brand" className="text-sm flex-1 sm:flex-none whitespace-nowrap"><i className="ph ph-plus text-lg"></i> Novo Produto</Button>
+            const renderCatalogList = () => {
+                const [catSearch, setCatSearch]         = React.useState('');
+                const [catSector, setCatSector]         = React.useState('');
+                const [catSelected, setCatSelected]     = React.useState([]);
+                const [catMoveSector, setCatMoveSector] = React.useState('');
+                const [catSelMode, setCatSelMode]       = React.useState(false);
+
+                const sectors = [...new Set(catalog.map(p => p.line || p.category || 'Geral').filter(Boolean))].sort();
+                const filtered = catalog.filter(p => {
+                    const sec = p.line || p.category || 'Geral';
+                    const matchSec = !catSector || sec === catSector;
+                    const matchQ   = !catSearch || p.name.toLowerCase().includes(catSearch.toLowerCase());
+                    return matchSec && matchQ;
+                });
+
+                const toggleSelect = (id) => setCatSelected(prev =>
+                    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                );
+                const selectAll = () => setCatSelected(filtered.map(p => p.id));
+                const clearSel  = () => { setCatSelected([]); setCatSelMode(false); };
+
+                const moveSelected = async () => {
+                    if (!catMoveSector || !catSelected.length) return;
+                    for (const id of catSelected) {
+                        const prod = catalog.find(p => p.id === id);
+                        if (!prod) continue;
+                        const updated = { ...prod, line: catMoveSector, category: catMoveSector };
+                        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'recipes', id), updated);
+                    }
+                    notify(`✅ ${catSelected.length} ficha(s) movidas para "${catMoveSector}"`);
+                    clearSel();
+                };
+
+                const deleteSelected = async () => {
+                    if (!catSelected.length) return;
+                    if (!confirm(`Apagar ${catSelected.length} ficha(s)?`)) return;
+                    for (const id of catSelected) {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'recipes', id));
+                    }
+                    notify(`🗑️ ${catSelected.length} ficha(s) apagadas`);
+                    clearSel();
+                };
+
+                return (
+                <div className="max-w-7xl mx-auto space-y-4 animate-fade-in pb-20">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-4">
+                        <h2 className="text-2xl font-black text-imac-text">Catálogo de Fichas Técnicas
+                            <span className="ml-2 text-sm font-bold text-gray-400">({filtered.length}/{catalog.length})</span>
+                        </h2>
+                        <div className="flex flex-wrap gap-2">
+                            <Button onClick={() => setCatSelMode(v => !v)} variant="secondary" className={`text-sm whitespace-nowrap ${catSelMode ? 'bg-imac-yellow text-white border-imac-yellow' : 'border-gray-300 text-gray-600'}`}>
+                                <i className="ph ph-check-square text-lg"></i> {catSelMode ? 'Cancelar Seleção' : 'Selecionar'}
+                            </Button>
+                            <Button onClick={() => setImportDataModalOpen(true)} variant="secondary" className="text-sm whitespace-nowrap border-imac-yellow text-imac-yellow hover:bg-yellow-50">
+                                <i className="ph ph-file-xls text-lg"></i> Importar
+                            </Button>
+                            <Button onClick={() => { const d=(settings?.defaultIndirectCosts||[]).map(d=>({...d,id:generateId()})); setEditingProduct({...INITIAL_PRODUCT,id:generateId(),indirectItems:d}); setView('catalog_editor'); setEditorTab('receita'); }} variant="brand" className="text-sm whitespace-nowrap">
+                                <i className="ph ph-plus text-lg"></i> Novo Produto
+                            </Button>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {catalog.map(p => {
+                    {/* Filtros */}
+                    <div className="flex flex-wrap gap-3 items-center">
+                        <div className="relative flex-1 min-w-48">
+                            <i className="ph ph-magnifying-glass absolute left-3 top-2.5 text-gray-400 text-lg"></i>
+                            <input value={catSearch} onChange={e => setCatSearch(e.target.value)}
+                                placeholder="Buscar ficha..." className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm font-bold outline-none focus:border-imac-yellow bg-white" />
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                            <button onClick={() => setCatSector('')} className={`px-3 py-2 rounded-xl text-xs font-black border transition-all ${!catSector ? 'bg-imac-yellow text-white border-imac-yellow' : 'bg-white border-gray-200 text-gray-600 hover:border-imac-yellow'}`}>
+                                Todos ({catalog.length})
+                            </button>
+                            {sectors.map(s => (
+                                <button key={s} onClick={() => setCatSector(s === catSector ? '' : s)}
+                                    className={`px-3 py-2 rounded-xl text-xs font-black border transition-all ${catSector === s ? 'bg-imac-yellow text-white border-imac-yellow' : 'bg-white border-gray-200 text-gray-600 hover:border-imac-yellow'}`}>
+                                    {s} ({catalog.filter(p => (p.line||p.category||'Geral') === s).length})
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Barra de ações em lote */}
+                    {catSelMode && (
+                        <div className="bg-imac-text text-white rounded-2xl px-5 py-3 flex flex-wrap items-center gap-3">
+                            <span className="font-black text-sm">{catSelected.length} selecionada(s)</span>
+                            <button onClick={selectAll} className="text-xs font-bold text-yellow-300 hover:text-white">Selecionar todos ({filtered.length})</button>
+                            <button onClick={clearSel} className="text-xs font-bold text-gray-400 hover:text-white">Limpar</button>
+                            <div className="flex-1"/>
+                            <div className="flex items-center gap-2">
+                                <select value={catMoveSector} onChange={e => setCatMoveSector(e.target.value)}
+                                    className="px-3 py-2 rounded-xl text-sm font-bold text-gray-800 border-0 outline-none">
+                                    <option value="">Mover para setor...</option>
+                                    {(settings?.lines || sectors).map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <button onClick={moveSelected} disabled={!catMoveSector || !catSelected.length}
+                                    className="px-4 py-2 bg-imac-yellow text-white rounded-xl text-sm font-black disabled:opacity-40">
+                                    <i className="ph ph-arrow-right mr-1"></i>Mover
+                                </button>
+                                <button onClick={deleteSelected} disabled={!catSelected.length}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-black disabled:opacity-40">
+                                    <i className="ph ph-trash mr-1"></i>Apagar
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Grid de fichas */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                        {filtered.map(p => {
                             const t = calculateProductData(p);
+                            const isSelected = catSelected.includes(p.id);
                             return (
-                                <Card key={p.id} onClick={() => { setEditingProduct(p); setView('catalog_editor'); setEditorTab('receita'); }} className="p-6 cursor-pointer hover:border-imac-yellow hover:shadow-md transition-all group relative overflow-hidden flex flex-col justify-between h-48">
+                                <Card key={p.id}
+                                    onClick={() => {
+                                        if (catSelMode) { toggleSelect(p.id); return; }
+                                        setEditingProduct(p); setView('catalog_editor'); setEditorTab('receita');
+                                    }}
+                                    className={`p-6 cursor-pointer transition-all group relative overflow-hidden flex flex-col justify-between h-48
+                                        ${isSelected ? 'border-imac-yellow bg-yellow-50 shadow-md ring-2 ring-imac-yellow' : 'hover:border-imac-yellow hover:shadow-md'}`}>
+                                    {catSelMode && (
+                                        <div className={`absolute top-3 right-3 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-imac-yellow border-imac-yellow' : 'border-gray-300 bg-white'}`}>
+                                            {isSelected && <i className="ph ph-check text-white text-xs font-black"></i>}
+                                        </div>
+                                    )}
                                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-imac-yellow opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                     <div>
                                         <div className="flex justify-between items-start mb-3">
-                                            <span className="text-[10px] bg-yellow-50 text-imac-yellow px-2 py-0.5 rounded font-black uppercase tracking-wider border border-yellow-100">{p.line}</span>
+                                            <span className="text-[10px] bg-yellow-50 text-imac-yellow px-2 py-0.5 rounded font-black uppercase tracking-wider border border-yellow-100">
+                                                {p.line || p.category || 'Geral'}
+                                            </span>
                                             {p.image && <div className="w-8 h-8 rounded-md overflow-hidden bg-gray-50 border border-gray-100"><img src={p.image} className="w-full h-full object-cover"/></div>}
                                         </div>
                                         <h3 className="font-black text-gray-900 text-base uppercase tracking-wide group-hover:text-imac-yellow transition-colors line-clamp-2">{p.name}</h3>
@@ -1415,12 +1523,18 @@
                                         <div className="text-right"><span className="block text-[10px] uppercase text-gray-400 font-bold mb-0.5">Margem</span><span className={`font-black text-sm ${t.marginPercent >= p.targetMargin ? 'text-emerald-600' : 'text-red-500'}`}>{formatMoney(t.marginPercent)}%</span></div>
                                     </div>
                                 </Card>
-                            )
+                            );
                         })}
-                        {catalog.length === 0 && <div className="col-span-full text-center py-16 text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50"><i className="ph ph-book-open text-5xl mx-auto mb-4 text-gray-300"></i>Nenhum produto cadastrado no catálogo.<br/>Clique em "Novo Produto" para começar a sua primeira Ficha Técnica.</div>}
+                        {filtered.length === 0 && (
+                            <div className="col-span-full text-center py-16 text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50">
+                                <i className="ph ph-book-open text-5xl mx-auto mb-4 text-gray-300"></i>
+                                {catSearch || catSector ? 'Nenhuma ficha encontrada para os filtros selecionados.' : 'Nenhum produto cadastrado. Clique em "Novo Produto" ou "Importar".'}
+                            </div>
+                        )}
                     </div>
                 </div>
-            );
+                );
+            };
 
             const PrintTechSheet = ({ product: p, calc: t, settings }) => (
                 <div className="hidden print:block w-full bg-white text-black p-4 font-sans max-w-4xl mx-auto">
