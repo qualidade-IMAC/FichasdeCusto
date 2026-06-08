@@ -840,46 +840,55 @@
                 notify(`✅ Vinculado: ${prod.descricao}`);
             };
 
-            // Sincroniza TODOS os insumos com código via Bridge (GET para evitar CORS/mixed-content)
+            // Sincroniza / Repopula estoque completo do portal via Bridge
             const wtSyncAll = async () => {
-                const comCodigo = ingredients.filter(i => i.code && !isNaN(Number(i.code)) && Number(i.code) > 0);
-                if (comCodigo.length === 0) { notify('Nenhum insumo com Código ERP. Busque e adicione primeiro.'); return; }
                 setWtSyncing(true); setWtSyncResult(null);
                 try {
-                    // Usa GET com codprods na query string — evita bloqueio de POST cross-origin
-                    const codprods = comCodigo.map(i => i.code).join(',');
-                    const r = await fetch(`${wtBridgeUrl}/api/sincronizar?codprods=${encodeURIComponent(codprods)}`, {
+                    // Busca TODOS os produtos do portal de uma vez
+                    const r = await fetch(`${wtBridgeUrl}/api/materias-primas`, {
                         signal: AbortSignal.timeout(30000),
                     });
                     const d = await r.json();
                     if (!d.ok) throw new Error(d.erro);
+                    if (!d.dados || d.dados.length === 0) throw new Error('Nenhum produto retornado pelo portal.');
 
-                    // Mapa codprod → ingredienteId
-                    const mapaIng = {};
-                    comCodigo.forEach(i => { mapaIng[String(i.code)] = i.id; });
-
-                    const batch = writeBatch(db);
+                    // Atualiza preços dos insumos existentes e adiciona novos
+                    const batch  = writeBatch(db);
                     let atualizados = 0;
-                    const resultado = d.resultado.map(x => {
-                        const ingId = mapaIng[String(x.codprod)];
-                        const ing   = ingredients.find(i => i.id === ingId);
-                        if (!x.encontrado || !ingId) return { ...x, ingredienteId: ingId };
-                        const novoPreco = x.custo_recomendado || x.custo || 0;
-                        if (novoPreco > 0) {
-                            batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ingId),
-                                { price: novoPreco, wt_ultima_sync: new Date().toISOString() }, { merge: true });
-                            setIngredients(prev => prev.map(i => i.id === ingId ? { ...i, price: novoPreco } : i));
+                    let adicionados = 0;
+
+                    const ingAtual = [...ingredients];
+
+                    d.dados.forEach(prod => {
+                        const cod   = String(prod.codprod);
+                        const preco = prod.custo_recomendado || prod.custo || 0;
+                        if (!cod || !prod.descricao || preco <= 0) return;
+
+                        const existing = ingAtual.find(i => String(i.code) === cod);
+                        if (existing) {
+                            // Atualiza preço
+                            batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', existing.id),
+                                { price: preco, wt_ultima_sync: new Date().toISOString() }, { merge: true });
                             atualizados++;
+                        } else {
+                            // Adiciona novo insumo
+                            const newId = generateId();
+                            const newIng = { id: newId, code: cod, name: prod.descricao,
+                                             price: preco, unit: prod.unidade || 'kg' };
+                            batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', newId), newIng);
+                            ingAtual.push(newIng);
+                            adicionados++;
                         }
-                        return { ...x, ingredienteId: ingId };
                     });
+
                     await batch.commit();
+                    setIngredients(ingAtual);
 
                     const now = new Date().toLocaleString('pt-BR');
                     setWtLastSync(now); localStorage.setItem('wt_last_sync', now);
-                    setWtSyncResult({ ...d, atualizados, resultado });
-                    notify(`✅ ${atualizados} insumos atualizados com preços do portal!`);
-                } catch (e) { notify('❌ Erro: ' + e.message); }
+                    setWtSyncResult({ atualizados, adicionados, total: d.total });
+                    notify(`✅ ${atualizados} atualizados, ${adicionados} novos adicionados do portal!`);
+                } catch (e) { notify('❌ Erro: ' + e.message); console.error(e); }
                 finally { setWtSyncing(false); }
             };
             // ── Fim WinThor Bridge ───────────────────────────────────────────
@@ -1920,19 +1929,13 @@
                                         {/* Resultado da sincronização */}
                                         {wtSyncResult && (
                                             <div className="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-4">
-                                                <p className="font-black text-emerald-400 text-sm mb-2">
-                                                    <i className="ph ph-check-circle mr-2"></i>{wtSyncResult.atualizados}/{wtSyncResult.total} insumos atualizados
+                                                <p className="font-black text-emerald-400 text-sm mb-1">
+                                                    <i className="ph ph-check-circle mr-2"></i>Sincronização concluída!
                                                 </p>
-                                                <div className="max-h-32 overflow-y-auto custom-scroll space-y-1">
-                                                    {(wtSyncResult.resultado || []).map((x, i) => {
-                                                        const ing = ingredients.find(ig => ig.id === x.ingredienteId);
-                                                        return (
-                                                            <div key={i} className={`text-xs font-bold flex justify-between px-3 py-1.5 rounded-lg ${x.encontrado ? 'text-emerald-300 bg-emerald-900/20' : 'text-slate-500 bg-white/5'}`}>
-                                                                <span>{ing?.name || x.ingredienteId}</span>
-                                                                <span>{x.encontrado ? `R$ ${(x.custo||0).toFixed(2)}` : 'não encontrado'}</span>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                <div className="flex gap-4 text-xs font-bold">
+                                                    <span className="text-emerald-300">✅ {wtSyncResult.atualizados} preços atualizados</span>
+                                                    {wtSyncResult.adicionados > 0 && <span className="text-blue-300">➕ {wtSyncResult.adicionados} novos adicionados</span>}
+                                                    <span className="text-slate-400">Total: {wtSyncResult.total} produtos</span>
                                                 </div>
                                             </div>
                                         )}
