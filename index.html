@@ -1140,70 +1140,79 @@
 
             const handleProcessImportedData = async (data) => {
                 const productsToProcess = data.products || (data.recipeName ? [data] : []);
-                let countImported = 0;
+                if (!productsToProcess.length) return;
+
                 const finalIngredientsList = [...ingredients];
-                
+
+                // ── Vincula ingredientes ao estoque ───────────────────────
+                // Tenta match por nome exato, depois parcial, depois cria novo sem custo
                 productsToProcess.forEach(prodData => {
                     (prodData.ingredients || []).forEach(ing => {
                         if (!ing.name) return;
-                        // Vincula ao estoque: busca por nome (case-insensitive) ou cria novo
+                        const nomeBusca = ing.name.toLowerCase().trim()
+                            .replace(/ - mp$/, '').replace(/ - cf.*$/, '').trim();
+
+                        // 1. Match exato
                         let invItem = finalIngredientsList.find(i =>
+                            i.name.toLowerCase().trim() === nomeBusca ||
                             i.name.toLowerCase().trim() === ing.name.toLowerCase().trim()
                         );
+
+                        // 2. Match parcial (contém o nome)
                         if (!invItem) {
-                            invItem = { id: generateId(), code: '', name: ing.name, price: safeVal(ing.unitPrice), unit: ing.unit || 'kg' };
-                            finalIngredientsList.push(invItem);
-                        } else if (safeVal(ing.unitPrice) > 0) {
-                            invItem.price = safeVal(ing.unitPrice);
+                            invItem = finalIngredientsList.find(i =>
+                                i.name.toLowerCase().includes(nomeBusca) ||
+                                nomeBusca.includes(i.name.toLowerCase().trim())
+                            );
                         }
+
+                        // 3. Não encontrou — cria no estoque sem custo (usuário vincula depois)
+                        if (!invItem) {
+                            invItem = {
+                                id:    generateId(),
+                                code:  '',
+                                name:  ing.name,
+                                price: 0,
+                                unit:  ing.unit || 'kg'
+                            };
+                            finalIngredientsList.push(invItem);
+                        }
+
                         ing.ingredientId = invItem.id;
+                        // Custo vem do estoque (não da planilha)
+                        ing.resolvedCost = invItem.price || 0;
                     });
                 });
 
+                // ── Monta produtos ────────────────────────────────────────
                 const newProducts = [];
                 productsToProcess.forEach(prodData => {
-                    // ── Monta seções com % de perda do Excel ──────────────
-                    // prodData.sectionLoss = { MASSA: 25.0, RECHEIO: 28.9 }
-                    const sectionLoss = prodData.sectionLoss || {};
-                    // Mapeia seções reais usadas nos ingredientes
+                    const sectionLoss  = prodData.sectionLoss || {};
                     const usedSections = [...new Set((prodData.ingredients || []).map(i => i.section || 'MASSA'))];
-                    const sectionsObj = {};
+                    const sectionsObj  = {};
                     usedSections.forEach(s => {
-                        // Procura perda pelo nome da seção (ex: "MASSA" ou "RECHEIO")
                         const lossKey = Object.keys(sectionLoss).find(k =>
                             s.toUpperCase().includes(k) || k.includes(s.toUpperCase())
                         );
-                        sectionsObj[s] = {
-                            processLossPct: lossKey ? sectionLoss[lossKey] : 0,
-                            tolerancePct: 5
-                        };
+                        sectionsObj[s] = { processLossPct: lossKey ? sectionLoss[lossKey] : 0, tolerancePct: 5 };
                     });
 
-                    // ── Formato de saída: unidade ou kg ───────────────────
                     const hasUnitWeight = (prodData.unitWeightG || 0) > 0;
-                    const outputType    = hasUnitWeight ? 'unit' : 'kg';
-                    const outputWeight  = prodData.unitWeightG || 0;
-                    const outputMeasure = prodData.unitWeightMeasure || 'g';
-
-                    // ── Ingredientes ligados ao estoque ───────────────────
                     const recipeIngs = (prodData.ingredients || []).map(ing => ({
                         id:           generateId(),
                         name:         ing.name,
                         qty:          safeVal(ing.quantity),
                         unit:         ing.unit || 'kg',
-                        cost:         safeVal(ing.unitPrice),
+                        cost:         ing.resolvedCost || 0,
                         section:      ing.section || usedSections[0] || 'MASSA',
                         fixedQty:     0,
                         ingredientId: ing.ingredientId,
-                    })).filter(i => i.name);
+                    })).filter(i => i.name && i.qty > 0);
 
-                    const defaults = (settings?.defaultIndirectCosts || []).map(d => ({ ...d, id: generateId() }));
-
-                    // ── Monta descrição rica com info de pacote ───────────
                     let desc = '';
-                    if (prodData.packWeightKg)     desc += `Peso por pacote: ${prodData.packWeightKg} kg | `;
-                    if (prodData.unitsPerPackage)  desc += `${prodData.unitsPerPackage} un/pacote | `;
-                    if (prodData.packagesPerBatch) desc += `${prodData.packagesPerBatch} pacotes/receita`;
+                    if (prodData.packWeightKg)      desc += `Peso por pacote: ${prodData.packWeightKg} kg | `;
+                    if (prodData.unitsPerPackage)   desc += `${prodData.unitsPerPackage} un/pacote | `;
+                    if (prodData.packagesPerBatch)  desc += `${prodData.packagesPerBatch} pacotes/receita`;
                     if (prodData.totalUnitsPerBatch) desc += ` = ${prodData.totalUnitsPerBatch} unidades`;
 
                     newProducts.push({
@@ -1211,14 +1220,13 @@
                         id:               generateId(),
                         name:             prodData.recipeName || 'Receita Importada',
                         description:      desc.trim(),
-                        outputType,
-                        outputUnitWeight: outputWeight,
-                        outputUnitMeasure: outputMeasure,
+                        outputType:       hasUnitWeight ? 'unit' : 'kg',
+                        outputUnitWeight: prodData.unitWeightG || 0,
+                        outputUnitMeasure: prodData.unitWeightMeasure || 'g',
                         yieldUnit:        prodData.yieldKg || 1,
                         sections:         Object.keys(sectionsObj).length > 0 ? sectionsObj : INITIAL_PRODUCT.sections,
                         ingredients:      recipeIngs,
-                        indirectItems:    defaults,
-                        // campos extras para referência
+                        indirectItems:    (settings?.defaultIndirectCosts || []).map(d => ({ ...d, id: generateId() })),
                         packWeightKg:        prodData.packWeightKg || 0,
                         unitsPerPackage:     prodData.unitsPerPackage || 0,
                         packagesPerBatch:    prodData.packagesPerBatch || 0,
@@ -1227,42 +1235,71 @@
                     });
                 });
 
-                countImported = newProducts.length;
-
+                // ── Salva no Firebase ─────────────────────────────────────
                 if (user) {
                     try {
-                        const expedioUid = authExpedio.currentUser ? authExpedio.currentUser.uid : user.uid;
-                        // Receitas → dbExpedio (mesmo Firebase onde o catálogo é lido)
-                        const batchRecipes = writeBatch(dbExpedio);
-                        newProducts.forEach(p => batchRecipes.set(
-                            doc(dbExpedio, 'artifacts', expedioAppId, 'users', expedioUid, 'recipes', p.id), p
-                        ));
-                        await batchRecipes.commit();
+                        // Aguarda auth do Expedio estar pronta
+                        let expedioUid = user.uid;
+                        if (authExpedio.currentUser) {
+                            expedioUid = authExpedio.currentUser.uid;
+                        } else {
+                            // Tenta aguardar até 3s
+                            await new Promise(res => {
+                                const unsub = authExpedio.onAuthStateChanged(u => {
+                                    unsub();
+                                    if (u) expedioUid = u.uid;
+                                    res();
+                                });
+                                setTimeout(res, 3000);
+                            });
+                        }
 
-                        // Insumos → db principal
-                        const batchIngs = writeBatch(db);
-                        finalIngredientsList.forEach(ing => batchIngs.set(
-                            doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ing.id), ing, { merge: true }
-                        ));
-                        await batchIngs.commit();
+                        // Salva receitas em lotes de 400 (limite Firestore)
+                        const BATCH_SIZE = 400;
+                        for (let i = 0; i < newProducts.length; i += BATCH_SIZE) {
+                            const batch = writeBatch(dbExpedio);
+                            newProducts.slice(i, i + BATCH_SIZE).forEach(p =>
+                                batch.set(doc(dbExpedio, 'artifacts', expedioAppId, 'users', expedioUid, 'recipes', p.id), p)
+                            );
+                            await batch.commit();
+                        }
+
+                        // Salva insumos novos no estoque
+                        const novosInsumos = finalIngredientsList.filter(
+                            ing => !ingredients.find(i => i.id === ing.id)
+                        );
+                        if (novosInsumos.length > 0) {
+                            for (let i = 0; i < novosInsumos.length; i += BATCH_SIZE) {
+                                const batch = writeBatch(db);
+                                novosInsumos.slice(i, i + BATCH_SIZE).forEach(ing =>
+                                    batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ing.id), ing)
+                                );
+                                await batch.commit();
+                            }
+                            setIngredients(finalIngredientsList);
+                        }
+
+                        setImportDataModalOpen(false);
+                        const semCusto = finalIngredientsList.filter(i =>
+                            !ingredients.find(x => x.id === i.id) && i.price === 0
+                        ).length;
+
+                        setTimeout(() => {
+                            if (newProducts.length === 1) {
+                                setEditingProduct(newProducts[0]);
+                                setEditorTab('receita');
+                                setView('catalog_editor');
+                            } else {
+                                setView('catalog_list');
+                            }
+                            notify(`✅ ${newProducts.length} receita(s) importada(s)!${semCusto > 0 ? ` ${semCusto} insumo(s) sem custo — vincule no Estoque.` : ''}`);
+                        }, 50);
+
                     } catch (e) {
-                        console.error("Batch write error:", e);
-                        notify("Erro ao salvar no Firebase: " + e.message);
+                        console.error("Erro ao salvar:", e);
+                        notify("❌ Erro ao salvar: " + e.message);
                     }
                 }
-
-                setImportDataModalOpen(false);
-                
-                setTimeout(() => {
-                    if (countImported === 1) {
-                        setEditingProduct(newProducts[0]);
-                        setEditorTab('receita');
-                        setView('catalog_editor');
-                    } else {
-                        setView('catalog_list');
-                    }
-                    notify(`${countImported} receita(s) importada(s) com sucesso!`);
-                }, 50);
             };
 
             // ==========================================
