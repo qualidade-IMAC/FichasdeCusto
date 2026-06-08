@@ -121,6 +121,9 @@
         const dbExpedio = getFirestore(appExpedio);
         const expedioAppId = '1:634756791567:web:993e61243b57b7e057d27a';
         
+        // Autentica no Firebase Expedio anonimamente para ter permissão de leitura/escrita
+        signInAnonymously(authExpedio).catch(e => console.warn('Auth Expedio falhou:', e.message));
+        
         const auth = getAuth(app);
         const db = getFirestore(app);
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'fichasdecusto_app';
@@ -1238,21 +1241,21 @@
                 // ── Salva no Firebase ─────────────────────────────────────
                 if (user) {
                     try {
-                        // Aguarda auth do Expedio estar pronta
+                        // Aguarda auth do Expedio estar pronta (até 5s)
                         let expedioUid = user.uid;
-                        if (authExpedio.currentUser) {
-                            expedioUid = authExpedio.currentUser.uid;
-                        } else {
-                            // Tenta aguardar até 3s
-                            await new Promise(res => {
-                                const unsub = authExpedio.onAuthStateChanged(u => {
-                                    unsub();
-                                    if (u) expedioUid = u.uid;
-                                    res();
-                                });
-                                setTimeout(res, 3000);
+                        await new Promise(res => {
+                            if (authExpedio.currentUser) {
+                                expedioUid = authExpedio.currentUser.uid;
+                                return res();
+                            }
+                            const unsub = authExpedio.onAuthStateChanged(u => {
+                                unsub();
+                                if (u) expedioUid = u.uid;
+                                res();
                             });
-                        }
+                            setTimeout(res, 5000);
+                        });
+                        console.log('[Import] expedioUid:', expedioUid);
 
                         // Salva receitas em lotes de 400 (limite Firestore)
                         const BATCH_SIZE = 400;
