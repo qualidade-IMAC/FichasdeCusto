@@ -265,6 +265,38 @@
         };
 
         // --- Modais de Importação ---
+        // ── Modal de busca de ingrediente do estoque ──────────────
+        const IngredientSearchInModal = ({ ingredients, onSelect }) => {
+            const [search, setSearch] = React.useState('');
+            const filtered = ingredients.filter(i =>
+                i.name.toLowerCase().includes(search.toLowerCase()) ||
+                (i.code && String(i.code).includes(search))
+            ).slice(0, 50);
+            return (
+                <div>
+                    <div className="relative mb-3">
+                        <i className="ph ph-magnifying-glass absolute left-3 top-3 text-gray-400 text-lg"></i>
+                        <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                            placeholder="Buscar por nome ou código ERP..."
+                            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold outline-none focus:border-imac-yellow bg-gray-50" />
+                    </div>
+                    <div className="overflow-y-auto max-h-80 custom-scroll space-y-1">
+                        {filtered.length === 0 && <p className="text-center text-gray-400 text-sm font-bold py-6">Nenhum insumo encontrado.</p>}
+                        {filtered.map(ing => (
+                            <button key={ing.id} onClick={() => onSelect(ing)}
+                                className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-yellow-50 hover:border-imac-yellow border border-transparent transition-all text-left group">
+                                <div>
+                                    <p className="font-black text-sm text-gray-800 group-hover:text-imac-yellow">{ing.name}</p>
+                                    <p className="text-xs text-gray-400 font-bold">{ing.code ? `#${ing.code} · ` : ''}{ing.unit}</p>
+                                </div>
+                                <span className="font-black text-imac-yellow text-sm">R$ {safeVal(ing.price).toFixed(2)}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
         const ImportDataModal = ({ isOpen, onClose, onProcess }) => {
             const [fileType, setFileType] = useState(null); 
             const [fileContent, setFileContent] = useState('');
@@ -1244,19 +1276,16 @@
                 // ── Salva no Firebase ─────────────────────────────────────
                 if (user) {
                     try {
-                        // Usa o UID do Google para o dbExpedio (igual ao handleSave)
                         const expedioUid = authExpedio.currentUser ? authExpedio.currentUser.uid : user.uid;
-                        console.log('[Import] expedioUid:', expedioUid);
+                        console.log('[Import] Salvando', newProducts.length, 'receitas para UID:', expedioUid);
 
-                        // Salva receitas em lotes de 400 (limite Firestore)
-                        const BATCH_SIZE = 400;
-                        for (let i = 0; i < newProducts.length; i += BATCH_SIZE) {
-                            const batch = writeBatch(dbExpedio);
-                            newProducts.slice(i, i + BATCH_SIZE).forEach(p =>
-                                batch.set(doc(dbExpedio, 'artifacts', expedioAppId, 'users', expedioUid, 'recipes', p.id), p)
+                        // Usa setDoc individual — igual ao handleSave que funciona
+                        for (const p of newProducts) {
+                            await setDoc(
+                                doc(dbExpedio, 'artifacts', expedioAppId, 'users', expedioUid, 'recipes', p.id), p
                             );
-                            await batch.commit();
                         }
+                        console.log('[Import] Receitas salvas OK');
 
                         // Salva insumos novos no estoque
                         const novosInsumos = finalIngredientsList.filter(
@@ -2362,6 +2391,34 @@
                         onClose={() => setImportDataModalOpen(false)}
                         onProcess={handleProcessImportedData}
                     />
+
+                    {/* Modal de Vinculação de Ingrediente ao Estoque */}
+                    {editorIngModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[80vh] overflow-hidden">
+                                <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
+                                    <h3 className="font-black text-lg text-imac-text flex items-center gap-2">
+                                        <i className="ph ph-link text-imac-yellow text-xl"></i> Vincular ao Estoque
+                                    </h3>
+                                    <button onClick={() => setEditorIngModalOpen(false)} className="text-gray-400 hover:text-gray-600"><i className="ph ph-x text-xl"></i></button>
+                                </div>
+                                <div className="p-4 border-b">
+                                    <IngredientSearchInModal
+                                        ingredients={ingredients}
+                                        onSelect={(ing) => {
+                                            if (editorActiveLinkIdx !== null) {
+                                                updateIng(editorActiveLinkIdx, 'name', ing.name);
+                                                updateIng(editorActiveLinkIdx, 'unit', ing.unit);
+                                                updateIng(editorActiveLinkIdx, 'ingredientId', ing.id);
+                                                updateIng(editorActiveLinkIdx, 'cost', ing.price);
+                                            }
+                                            setEditorIngModalOpen(false);
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {notification && (
                         <div className="fixed bottom-6 right-6 bg-imac-text text-white px-6 py-4 rounded-2xl shadow-2xl z-50 animate-slide-in flex items-center gap-4 no-print font-bold">
