@@ -139,7 +139,8 @@
         
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'fichasdecusto_app';
+        // appId FIXO — garante que todos os dispositivos leem do mesmo caminho no Firestore
+        const appId = 'fichasdecusto_app';
 
         // --- Helpers Globais ---
         const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
