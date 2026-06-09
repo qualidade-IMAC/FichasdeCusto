@@ -1309,10 +1309,9 @@
                 // ── Salva no Firebase ─────────────────────────────────────
                 if (user) {
                     try {
-                        
-                        console.log('[Import] Salvando', newProducts.length, 'receitas');
+                        console.log('[Import] Salvando', newProducts.length, 'receitas...');
 
-                        // Usa setDoc individual — igual ao handleSave que funciona
+                        // Salva receitas uma a uma (setDoc individual é mais confiável)
                         for (const p of newProducts) {
                             await setDoc(
                                 doc(db, 'artifacts', appId, 'users', user.uid, 'recipes', p.id), p
@@ -1320,19 +1319,21 @@
                         }
                         console.log('[Import] Receitas salvas OK');
 
-                        // Salva insumos novos no estoque
+                        // Salva insumos novos em lotes de 400 (limite do Firestore)
                         const novosInsumos = finalIngredientsList.filter(
                             ing => !ingredients.find(i => i.id === ing.id)
                         );
                         if (novosInsumos.length > 0) {
-                            for (let i = 0; i < novosInsumos.length; i += BATCH_SIZE) {
+                            const LOTE = 400;
+                            for (let i = 0; i < novosInsumos.length; i += LOTE) {
                                 const batch = writeBatch(db);
-                                novosInsumos.slice(i, i + BATCH_SIZE).forEach(ing =>
+                                novosInsumos.slice(i, i + LOTE).forEach(ing =>
                                     batch.set(doc(db, 'artifacts', appId, 'users', user.uid, 'ingredients', ing.id), ing)
                                 );
                                 await batch.commit();
                             }
                             setIngredients(finalIngredientsList);
+                            console.log('[Import]', novosInsumos.length, 'insumos novos salvos');
                         }
 
                         setImportDataModalOpen(false);
@@ -1353,7 +1354,7 @@
 
                     } catch (e) {
                         console.error("Erro ao salvar:", e);
-                        notify("❌ Erro ao salvar: " + e.message);
+                        notify(`❌ Erro ao salvar: ${e.message}`);
                     }
                 }
             };
